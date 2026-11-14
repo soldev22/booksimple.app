@@ -1,0 +1,541 @@
+# Universal Communications & Booking Platform
+## Product Definition
+
+## 1. Product Vision
+
+Build a simple multi-tenant platform that gives small B2C businesses one place to manage:
+
+- customer conversations
+- bookings
+- deposits
+- confirmations
+- reminders
+
+Customers should be able to communicate with a business using channels they already use rather than being forced to install another application.
+
+Initial channels:
+
+- WhatsApp
+- Facebook / Meta messaging
+- SMS
+- Email
+
+The business sees these interactions through one unified application.
+
+The platform may initially be tested with beauty businesses, but the core product must remain suitable for many appointment and service-based businesses.
+
+Examples include:
+
+- beauty businesses
+- hairdressers
+- barbers
+- personal trainers
+- therapists
+- tutors
+- cleaners
+- consultants
+- trades and home services
+- other appointment-based businesses
+
+Industry-specific functionality must not be built into the core platform unless explicitly approved.
+
+---
+
+# 2. The Problem
+
+Small B2C businesses frequently communicate with customers through several disconnected channels.
+
+A customer might:
+
+- enquire through Facebook,
+- continue the conversation through WhatsApp,
+- receive a booking confirmation by SMS,
+- receive an invoice or other information by email,
+- and later contact the business again through another channel.
+
+This creates fragmented customer communication.
+
+Businesses must monitor several applications and manually connect conversations, bookings and payments.
+
+The product should reduce that fragmentation.
+
+---
+
+# 3. Core Product Experience
+
+The intended customer journey is:
+
+Customer Contact
+↓
+Unified Conversation
+↓
+Booking
+↓
+Deposit if required
+↓
+Booking Confirmation
+↓
+Reminder
+↓
+Completed Booking
+
+Not every conversation must result in a booking.
+
+Not every booking requires a deposit.
+
+The system must therefore keep conversations, bookings and payments related but independently manageable.
+
+---
+
+# 4. Multi-Tenant Platform
+
+The platform will be a SaaS application supporting multiple independent businesses.
+
+Each business is a tenant.
+
+Each tenant must have its own:
+
+- users
+- customers
+- conversations
+- messages
+- bookings
+- services
+- deposit configuration
+- reminder configuration
+- communication channels
+- integration settings
+
+Tenant data must remain isolated.
+
+A user belonging to Business A must never be able to access data belonging to Business B unless an explicit future platform-administration capability authorises it.
+
+---
+
+# 5. Business Onboarding
+
+A business should eventually be able to:
+
+1. create its business account,
+2. enter basic business details,
+3. configure users,
+4. configure services,
+5. configure booking preferences,
+6. configure its deposit policy,
+7. configure reminders,
+8. connect supported communication channels,
+9. begin receiving and responding to customer communications.
+
+Onboarding should be kept as simple as possible.
+
+---
+
+# 6. Unified Inbox
+
+The application will provide a unified business inbox.
+
+Messages from supported communication channels should appear as conversations inside the platform.
+
+Initial channels:
+
+- WhatsApp
+- Facebook / Meta messaging
+- SMS
+- Email
+
+Each message must retain information about its originating channel.
+
+Example:
+
+Customer: Jane Smith
+
+Conversation:
+
+WhatsApp
+"Hi, do you have anything available Friday?"
+
+Business
+"Yes, I have 2:30 or 4:00."
+
+Customer
+"4 please."
+
+The business should not need to leave the platform to continue the conversation where technically possible.
+
+---
+
+# 7. Customer Records
+
+The platform maintains customer records.
+
+A customer may have one or more identifiers, including:
+
+- name
+- mobile number
+- email address
+- communication-channel identifiers
+
+The system should be designed to associate multiple communication channels with the same customer where reliable matching is possible.
+
+Automatic matching must not recklessly merge different people simply because some data appears similar.
+
+Customer records may be created through:
+
+- incoming communication,
+- manual creation,
+- a booking,
+- future integrations.
+
+---
+
+# 8. Conversations
+
+A conversation represents communication between a business and a customer.
+
+A conversation contains messages.
+
+Each message should retain relevant information such as:
+
+- tenant/business
+- customer
+- conversation
+- direction
+- communication channel
+- sender
+- recipient
+- timestamp
+- message content
+- delivery status where available
+- external provider identifier where required
+
+Direction must distinguish between:
+
+- inbound
+- outbound
+
+Core conversation behaviour must remain independent of individual communication providers.
+
+---
+
+# 9. Services
+
+Businesses may define services that can be booked.
+
+A service may eventually contain information such as:
+
+- name
+- description
+- duration
+- price
+- active/inactive status
+
+The concept of a service is generic.
+
+Do not assume a service is a beauty treatment, haircut or any other industry-specific activity.
+
+---
+
+# 10. Bookings
+
+A business user must be able to create a booking.
+
+A booking may be created:
+
+- manually,
+- from a customer conversation,
+- through future customer self-booking,
+- through future integrations.
+
+A booking may contain:
+
+- tenant/business
+- customer
+- service
+- assigned staff member or resource
+- location
+- start date/time
+- duration
+- price
+- status
+- notes
+- deposit requirement
+- deposit status
+
+The exact database model will be defined separately in the architecture.
+
+---
+
+# 11. Booking Status
+
+The system should support a clear booking lifecycle.
+
+Initial conceptual statuses may include:
+
+- pending
+- awaiting deposit
+- confirmed
+- completed
+- cancelled
+- no-show
+
+These statuses should remain implementation-neutral until the data model is agreed.
+
+---
+
+# 12. Deposits
+
+Businesses must be able to request deposits for bookings.
+
+A business must be able to configure a deposit percentage from:
+
+0% to 100%.
+
+Examples:
+
+0% = no deposit required
+
+20% = customer pays 20% of the booking value
+
+50% = customer pays half of the booking value
+
+100% = full payment required in advance
+
+A deposit policy must not be inherently tied to a specific product or industry.
+
+The architecture should allow deposit policies to become more sophisticated later without redesigning the entire booking system.
+
+For example, future versions could support different policies based on:
+
+- services
+- customers
+- booking value
+- booking circumstances
+
+These are future capabilities and must not be implemented in V1 unless explicitly requested.
+
+---
+
+# 13. Deposit Override
+
+An authorised business user must eventually be able to override the normal deposit requirement for an individual booking.
+
+Example:
+
+Business default deposit: 30%
+
+Customer is a trusted regular customer.
+
+Business user changes this booking's deposit requirement to:
+
+0%
+
+The override applies to that booking only.
+
+The system should retain enough information to distinguish the business's default policy from an individual booking override.
+
+---
+
+# 14. Payments
+
+Payments should be handled through an external payment provider rather than storing card details in the application.
+
+The application needs to record appropriate information about the payment/deposit, such as:
+
+- amount required
+- payment status
+- provider reference
+- payment timestamp
+
+Payment provider selection will be made during architecture/integration planning.
+
+Do not implement a payment provider until that decision has been made.
+
+---
+
+# 15. Booking Confirmation
+
+Once a booking reaches the appropriate confirmed state, the system should be capable of sending confirmation to the customer.
+
+Confirmation should include relevant booking information.
+
+The communication architecture should allow confirmations to use an appropriate configured channel.
+
+Do not hard-code confirmations to SMS, WhatsApp or email.
+
+---
+
+# 16. Reminders
+
+Businesses should be able to configure booking reminders.
+
+Examples could eventually include:
+
+- 24 hours before booking
+- 48 hours before booking
+- one week before booking
+
+These are examples rather than fixed product rules.
+
+Reminder timing should be configurable.
+
+Reminder delivery should eventually support appropriate available communication channels.
+
+Reminder infrastructure must support reliable background processing.
+
+---
+
+# 17. Business Users
+
+A tenant may have multiple users.
+
+The product should be designed for future role-based permissions.
+
+Likely conceptual roles include:
+
+- business owner
+- administrator
+- staff
+
+Detailed permissions will be defined later.
+
+Do not create a complex permissions model before it is required.
+
+---
+
+# 18. Business Dashboard
+
+The application should eventually provide a simple dashboard containing useful operational information.
+
+Examples may include:
+
+- today's bookings
+- upcoming bookings
+- conversations requiring attention
+- deposits awaiting payment
+
+The dashboard should remain operational and simple.
+
+Advanced analytics are outside the initial product scope.
+
+---
+
+# 19. V1 Scope
+
+The first usable version should prove that the core workflow works.
+
+V1 target:
+
+1. Create a business tenant.
+2. Create/manage a customer.
+3. Receive or create a conversation.
+4. View messages in a unified inbox.
+5. Send a reply.
+6. Create a booking associated with the customer.
+7. Apply the business's deposit rule.
+8. Allow an authorised deposit override.
+9. Track whether the deposit has been paid.
+10. Confirm the booking.
+11. Schedule and send a reminder.
+
+V1 does not need every external communication provider working simultaneously.
+
+The implementation can prove the architecture with selected integrations before additional channels are added.
+
+---
+
+# 20. Explicitly Out of Scope for Initial Build
+
+Do not build the following unless explicitly added to the project scope:
+
+- payroll
+- accounting
+- stock/inventory management
+- employee HR management
+- complex CRM functionality
+- loyalty programmes
+- marketing automation
+- social-media publishing
+- AI assistants
+- customer mobile apps
+- native iOS applications
+- native Android applications
+- large analytics platforms
+- industry-specific workflows
+
+These capabilities may be considered later but are not part of the initial product.
+
+---
+
+# 21. Product Design Principles
+
+The product should be:
+
+## Simple
+
+Small businesses must be able to understand the application without substantial training.
+
+## Mobile Friendly
+
+Business users may frequently access the platform from phones and tablets.
+
+The web interface must therefore be responsive from the beginning.
+
+## Fast
+
+Common actions should require as few steps as practical.
+
+## Channel Neutral
+
+Core application logic must not depend on WhatsApp, Facebook, SMS or email.
+
+## Industry Neutral
+
+Core functionality must not depend on beauty-industry terminology or processes.
+
+## Secure
+
+Tenant isolation and protection of customer data are non-negotiable requirements.
+
+## Expandable
+
+Architecture should allow additional communication channels and capabilities without unnecessary rewrites.
+
+---
+
+# 22. Guiding Product Rule
+
+Whenever a new feature is proposed, ask:
+
+"Does this help a small business manage customer communication, booking, payment/deposit or the booking relationship?"
+
+If YES:
+
+Evaluate whether it belongs in the product.
+
+If NO:
+
+It is probably outside the core product and should not be implemented without an explicit scope decision.
+
+---
+
+# 23. Current Product Goal
+
+The immediate objective is NOT to build the entire platform.
+
+The immediate objective is to build the smallest technically sound version capable of proving:
+
+Unified customer communication
++
+Customer identity
++
+Booking
++
+Deposit
++
+Confirmation
++
+Reminder
+
+Once that workflow works reliably for one tenant, the implementation must be proven to remain correctly isolated when multiple businesses use the platform.
+
+Only then should the product expand into additional integrations and capabilities.

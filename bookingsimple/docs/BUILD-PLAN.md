@@ -1,0 +1,1236 @@
+# Universal Communications & Booking Platform
+## Build Plan
+
+# 1. Purpose
+
+This document defines the controlled implementation sequence for the platform.
+
+The application must be built incrementally.
+
+Copilot must NOT attempt to build the entire platform in one operation.
+
+For every stage:
+
+1. Read the project instruction and documentation files.
+2. Inspect the current implementation.
+3. Implement only the requested stage.
+4. Run the required checks.
+5. Fix errors introduced by that stage.
+6. Report what changed.
+7. STOP.
+
+Do not continue automatically to the next stage.
+
+---
+
+# 2. Build Philosophy
+
+The build sequence is designed to prove the highest-risk foundations before adding external integrations.
+
+The order is intentionally:
+
+Foundation
+↓
+Database
+↓
+Authentication
+↓
+Multi-tenancy
+↓
+Customers
+↓
+Services
+↓
+Conversations
+↓
+Bookings
+↓
+Deposits
+↓
+Payments
+↓
+Reminders
+↓
+External communication channels
+
+Do not reverse this sequence merely to demonstrate an external API early.
+
+The product must have a sound internal model before connecting real providers.
+
+---
+
+# STAGE 0 — Project Documentation
+
+## Objective
+
+Establish the product definition, architecture, development rules, and build plan before application code is generated.
+
+## Required Files
+
+`.github/copilot-instructions.md`
+
+`docs/PRODUCT.md`
+
+`docs/ARCHITECTURE.md`
+
+`docs/GUARDRAILS.md`
+
+`docs/BUILD-PLAN.md`
+
+`README.md`
+
+## Completion Criteria
+
+- Product purpose documented.
+- Architecture documented.
+- Guardrails documented.
+- Build stages documented.
+- Copilot instructions available.
+- No application functionality required.
+
+## Current Status
+
+COMPLETE.
+
+---
+
+# STAGE 1 — Application Foundation
+
+## Objective
+
+Create the basic application and prove the development environment works.
+
+## Build
+
+Create a Next.js application using:
+
+- TypeScript
+- App Router
+- ESLint
+
+Use a clean `src` based project structure.
+
+Set up basic responsive styling.
+
+Create only the minimum application shell required.
+
+## Initial UI
+
+Provide:
+
+- application shell
+- simple home/dashboard placeholder
+- navigation structure
+- mobile-friendly layout
+
+Do not implement real business features yet.
+
+## Required Development Commands
+
+The project must support:
+
+`npm run dev`
+
+`npm run build`
+
+`npm run lint`
+
+## Completion Criteria
+
+- application starts locally
+- home page loads
+- TypeScript compiles
+- production build succeeds
+- lint succeeds
+- responsive shell works
+- no unnecessary dependencies introduced
+
+STOP after completion.
+
+---
+
+# STAGE 2 — Database Foundation
+
+## Objective
+
+Connect the application to PostgreSQL and establish controlled database management.
+
+## Build
+
+Add:
+
+- Prisma
+- PostgreSQL configuration
+- environment configuration
+- initial database connection
+- migration workflow
+
+Create:
+
+`.env.example`
+
+Ensure real environment files are excluded from Git.
+
+## Initial Schema
+
+Create only foundation entities required for tenancy:
+
+Business
+
+User
+
+BusinessMembership
+
+Do not create every future product table yet.
+
+## Completion Criteria
+
+- Prisma configured
+- PostgreSQL connection works
+- initial migration succeeds
+- application can access database server-side
+- secrets are not committed
+- schema is version controlled
+
+STOP after completion.
+
+---
+
+# STAGE 3 — Authentication
+
+## Objective
+
+Introduce user authentication.
+
+## Build
+
+Implement the selected authentication solution.
+
+The authentication system must establish:
+
+- user identity
+- server-side session
+- protected application routes
+- authenticated user retrieval
+
+Do not confuse authentication with tenant authorization.
+
+## Completion Criteria
+
+- user can sign in
+- user can sign out
+- protected routes reject unauthenticated requests
+- authenticated identity is available server-side
+- secrets remain server-side
+- build and lint pass
+
+STOP after completion.
+
+---
+
+# STAGE 4 — Tenant Context and Authorization
+
+## Objective
+
+Establish strong tenant isolation before creating customer/business functionality.
+
+## Build
+
+Implement:
+
+- Business membership lookup
+- current business context
+- server-side tenant authorization
+- basic role structure
+
+Initial conceptual roles:
+
+OWNER
+
+ADMIN
+
+STAFF
+
+Create reusable mechanisms for obtaining the authorized business context.
+
+## Critical Tests
+
+Prove:
+
+User in Business A can access Business A.
+
+User in Business A cannot access Business B.
+
+Supplying Business B's ID manually does not bypass authorization.
+
+## Completion Criteria
+
+- current tenant can be resolved securely
+- authorization occurs server-side
+- cross-tenant access tests pass
+- tenant context is reusable by future modules
+
+STOP after completion.
+
+---
+
+# STAGE 5 — Business Setup
+
+## Objective
+
+Allow the basic business profile to be managed.
+
+## Build
+
+Provide basic business configuration.
+
+Initial fields may include:
+
+- business name
+- timezone
+- currency
+
+Do not add a large settings system.
+
+## Defaults
+
+Initial testing may use:
+
+Timezone:
+Europe/London
+
+Currency:
+GBP
+
+However, these must be explicit configuration values rather than permanent architectural assumptions.
+
+## Completion Criteria
+
+- authorized user can view business details
+- authorized user can update permitted business settings
+- another tenant cannot access or modify those settings
+- validation exists
+- mobile layout works
+
+STOP after completion.
+
+---
+
+# STAGE 6 — Customer Management
+
+## Objective
+
+Create the first real tenant-owned business domain.
+
+## Build
+
+Add the Customer model and customer management functionality.
+
+Initial Customer information:
+
+- name
+- email
+- phone
+- createdAt
+- updatedAt
+
+All customers must belong to a tenant.
+
+## UI
+
+Create:
+
+- customer list
+- customer search
+- create customer
+- customer detail
+- edit customer
+
+## Critical Tests
+
+Verify:
+
+Business A cannot see Business B customers.
+
+Business A cannot retrieve a Business B customer by changing the URL/ID.
+
+Business A cannot update a Business B customer.
+
+## Completion Criteria
+
+- CRUD behaviour works
+- validation works
+- tenant isolation tests pass
+- responsive UI works
+- build and lint pass
+
+STOP after completion.
+
+---
+
+# STAGE 7 — Services
+
+## Objective
+
+Allow businesses to define generic bookable services.
+
+## Model
+
+Initial Service information:
+
+- tenantId
+- name
+- description
+- durationMinutes
+- price
+- currency
+- active
+
+Money must use integer minor units.
+
+Example:
+
+£25.50
+
+stored as:
+
+2550
+
+## UI
+
+Create:
+
+- service list
+- create service
+- edit service
+- activate/deactivate service
+
+Do not introduce beauty-specific terminology.
+
+## Completion Criteria
+
+- tenant-scoped service management works
+- money handling uses minor units
+- validation works
+- tenant isolation verified
+- responsive UI works
+
+STOP after completion.
+
+---
+
+# STAGE 8 — Conversation Domain
+
+## Objective
+
+Create the provider-neutral internal communication model before connecting external messaging providers.
+
+## Models
+
+Create:
+
+Conversation
+
+Message
+
+CustomerChannelIdentity if required by the agreed schema.
+
+## Message Concepts
+
+Direction:
+
+INBOUND
+
+OUTBOUND
+
+Channel:
+
+WHATSAPP
+
+FACEBOOK
+
+SMS
+
+EMAIL
+
+Initial message creation may be local/development-driven.
+
+Do NOT connect real communication APIs yet.
+
+## UI
+
+Build the first unified inbox.
+
+Required concepts:
+
+- conversation list
+- customer identity
+- last message
+- channel indicator
+- conversation view
+- message history
+- reply input
+
+Replies may initially be stored locally in the database rather than sent to an external provider.
+
+This proves the internal domain first.
+
+## Completion Criteria
+
+- conversations can be created
+- messages can be stored
+- inbound/outbound direction works
+- conversations display correctly
+- tenant isolation verified
+- UI resembles a usable business inbox
+- no provider-specific logic leaks into domain code
+
+STOP after completion.
+
+---
+
+# STAGE 9 — Booking Foundation
+
+## Objective
+
+Allow a conversation/customer to produce a booking.
+
+## Model
+
+Introduce Booking.
+
+Initial booking information:
+
+- tenantId
+- customerId
+- serviceId
+- startAt
+- endAt
+- status
+- totalAmount
+- currency
+- createdAt
+- updatedAt
+
+## Initial Statuses
+
+PENDING
+
+AWAITING_DEPOSIT
+
+CONFIRMED
+
+COMPLETED
+
+CANCELLED
+
+NO_SHOW
+
+Do not add unnecessary workflow complexity.
+
+## UI
+
+Allow:
+
+- booking creation
+- booking viewing
+- booking editing where appropriate
+- booking cancellation
+- viewing customer bookings
+
+Where appropriate, allow booking creation directly from a conversation.
+
+## Completion Criteria
+
+- booking can be created for a customer
+- service can be selected
+- times are stored correctly
+- tenant timezone is respected for display
+- tenant isolation verified
+- booking state is explicit
+
+STOP after completion.
+
+---
+
+# STAGE 10 — Deposit Engine
+
+## Objective
+
+Implement the business deposit rules without processing real payments yet.
+
+## Business Configuration
+
+Add:
+
+defaultDepositPercentage
+
+Valid range:
+
+0 to 100 inclusive.
+
+## Booking Behaviour
+
+When a booking is created, calculate and preserve:
+
+- default deposit percentage
+- applied deposit percentage
+- deposit amount
+- whether the deposit was overridden
+
+Do not derive historic booking deposits from current business settings.
+
+## Calculation
+
+Use integer minor units.
+
+Example:
+
+Booking:
+
+£80.00
+
+Internal value:
+
+8000
+
+Deposit:
+
+25%
+
+Deposit amount:
+
+2000
+
+Displayed:
+
+£20.00
+
+Define deterministic rounding for calculations that do not divide exactly.
+
+## Deposit Override
+
+Allow appropriately authorized users to change the deposit percentage for an individual booking.
+
+Retain:
+
+- original percentage
+- applied percentage
+- overriding user
+- override timestamp
+
+## Critical Cases
+
+Test:
+
+0%
+
+1%
+
+25%
+
+50%
+
+99%
+
+100%
+
+and rounding cases.
+
+## Completion Criteria
+
+- defaults work
+- overrides work
+- historical terms are preserved
+- calculations are deterministic
+- authorization works
+- tenant isolation verified
+
+STOP after completion.
+
+---
+
+# STAGE 11 — Payment Domain
+
+## Objective
+
+Create the internal payment model before connecting a real payment provider.
+
+## Model
+
+Introduce Payment.
+
+Conceptual fields:
+
+- tenantId
+- bookingId
+- type
+- amount
+- currency
+- status
+- provider
+- externalPaymentId
+- paidAt
+- createdAt
+
+Possible payment types:
+
+DEPOSIT
+
+BALANCE
+
+FULL_PAYMENT
+
+Initial statuses:
+
+PENDING
+
+PAID
+
+FAILED
+
+REFUNDED
+
+## Development Behaviour
+
+Use an explicitly labelled mock/test payment provider.
+
+The UI must make it clear that this is NOT a live payment.
+
+## Workflow
+
+Prove:
+
+Booking
+↓
+Deposit Required
+↓
+Payment Request
+↓
+Mock Payment
+↓
+Payment Confirmed
+↓
+Booking Confirmed
+
+## Completion Criteria
+
+- payment domain works
+- payment state affects booking appropriately
+- duplicate payment notifications are handled safely
+- tenant isolation verified
+- mocked payment clearly identified as simulated
+
+STOP after completion.
+
+---
+
+# STAGE 12 — Reminder Domain
+
+## Objective
+
+Create booking reminders before connecting them to real communication providers.
+
+## Model
+
+Introduce Reminder.
+
+Conceptual fields:
+
+- tenantId
+- bookingId
+- scheduledFor
+- channel
+- status
+- sentAt
+- createdAt
+
+## Behaviour
+
+Allow reminder configuration.
+
+Do not use browser timers.
+
+Create a server-side mechanism capable of finding due reminders.
+
+Initially, reminder delivery may use a development/mock provider.
+
+## Critical Tests
+
+Verify:
+
+- reminders are created correctly
+- cancelled bookings do not receive inappropriate reminders
+- duplicate processing does not repeatedly send reminders
+- timezone handling is correct
+- tenant isolation works
+
+## Completion Criteria
+
+- reminder scheduling works
+- due reminder detection works
+- retry/idempotency behaviour is defined
+- mock delivery works
+- browser does not control business-critical scheduling
+
+STOP after completion.
+
+---
+
+# STAGE 13 — Messaging Provider Interface
+
+## Objective
+
+Create the provider abstraction required for real two-way communication.
+
+## Build
+
+Define the internal messaging-provider contract.
+
+Conceptually support:
+
+- sendMessage
+- validateWebhook
+- parseIncomingMessage
+
+Provider code must translate between:
+
+external provider models
+
+and
+
+internal Message models.
+
+## Completion Criteria
+
+- provider abstraction exists
+- core conversation logic does not know provider payload structures
+- mock provider implements the interface
+- provider can be replaced without redesigning Conversation or Message
+
+STOP after completion.
+
+---
+
+# STAGE 14 — First Real Communication Channel
+
+## Objective
+
+Connect one real communication channel end-to-end.
+
+Do NOT attempt WhatsApp + Facebook + SMS + Email simultaneously.
+
+Select the first provider/channel before implementation begins.
+
+## Required Flow
+
+Customer
+↓
+External Channel
+↓
+Provider
+↓
+Webhook
+↓
+Application
+↓
+Customer Identification
+↓
+Conversation
+↓
+Unified Inbox
+
+Reply:
+
+Business
+↓
+Unified Inbox
+↓
+Messaging Service
+↓
+Provider Adapter
+↓
+Provider
+↓
+Customer
+
+## Requirements
+
+- webhook authentication/validation
+- normalized message input
+- duplicate-event protection
+- outbound send
+- send failure handling
+- external message ID tracking
+- tenant identification
+- logs without secrets
+
+## Completion Criteria
+
+- real inbound message appears in inbox
+- business can reply
+- customer receives reply
+- duplicate webhook does not duplicate message
+- failures are visible/handled
+- tenant isolation proven
+
+STOP after completion.
+
+---
+
+# STAGE 15 — Real Payment Provider
+
+## Objective
+
+Replace the mock payment implementation with a real provider adapter.
+
+The payment provider must be selected explicitly before implementation.
+
+## Required Flow
+
+Booking
+↓
+Deposit Required
+↓
+Payment Request
+↓
+Secure Provider Checkout
+↓
+Provider Payment
+↓
+Verified Webhook
+↓
+Payment Record Updated
+↓
+Booking Confirmed
+
+## Requirements
+
+- no card details stored
+- webhook verification
+- idempotent processing
+- failed payments handled
+- provider reference retained
+- tenant/booking association verified
+
+## Completion Criteria
+
+- test/sandbox payment succeeds
+- payment webhook updates correct booking
+- duplicate webhook is safe
+- payment failure is handled
+- booking confirmation follows correct payment state
+
+Do not enable production payments without explicit approval.
+
+STOP after completion.
+
+---
+
+# STAGE 16 — Booking Confirmation Messaging
+
+## Objective
+
+Connect confirmed bookings to customer communications.
+
+## Behaviour
+
+When a booking becomes confirmed:
+
+1. create confirmation communication,
+2. select the configured/appropriate channel,
+3. dispatch through messaging provider abstraction,
+4. record the outbound message,
+5. track status where supported.
+
+Ensure retries cannot repeatedly send confirmations without control.
+
+## Completion Criteria
+
+- confirmed booking generates correct confirmation
+- message is associated with customer/conversation
+- duplicate confirmation risk is controlled
+- provider failure is handled
+
+STOP after completion.
+
+---
+
+# STAGE 17 — Real Reminder Delivery
+
+## Objective
+
+Send actual booking reminders using the messaging architecture.
+
+## Flow
+
+Scheduled Reminder
+↓
+Background Processor
+↓
+Validate Booking State
+↓
+Messaging Service
+↓
+Provider Adapter
+↓
+Customer
+↓
+Record Result
+
+## Completion Criteria
+
+- reminder sends without an active browser
+- cancelled booking is checked before sending
+- duplicate processing is safe
+- delivery result is recorded
+- failures are visible and retryable where appropriate
+
+STOP after completion.
+
+---
+
+# STAGE 18 — Additional Communication Channels
+
+## Objective
+
+Expand the unified inbox after the first provider architecture is proven.
+
+Potential channels:
+
+- WhatsApp
+- Facebook / Meta
+- SMS
+- Email
+
+Add one channel at a time.
+
+For each channel:
+
+1. create/extend provider adapter,
+2. validate incoming webhooks,
+3. normalize messages,
+4. prove tenant mapping,
+5. prove incoming messaging,
+6. prove outgoing messaging,
+7. test failures,
+8. test duplicates,
+9. STOP before adding another channel.
+
+Do not duplicate core conversation logic for each provider.
+
+---
+
+# STAGE 19 — Operational Dashboard
+
+## Objective
+
+Create a useful daily business overview using functionality that now genuinely exists.
+
+Potential dashboard information:
+
+- today's bookings
+- upcoming bookings
+- conversations requiring attention
+- deposits awaiting payment
+- reminder failures
+
+Do not build advanced analytics.
+
+## Completion Criteria
+
+- dashboard uses tenant-scoped data
+- information is operationally useful
+- mobile layout works
+- no cross-tenant aggregation occurs
+
+STOP after completion.
+
+---
+
+# STAGE 20 — Production Readiness
+
+## Objective
+
+Prepare the proven application for controlled production use.
+
+Review:
+
+- authentication
+- authorization
+- tenant isolation
+- database indexes
+- migrations
+- secret management
+- monitoring
+- structured logging
+- backup strategy
+- webhook security
+- rate limiting
+- dependency security
+- error handling
+- background processing
+- retry behaviour
+- accessibility
+- mobile responsiveness
+
+Run production build and tests.
+
+Resolve critical security issues before deployment.
+
+STOP before deploying production unless deployment is explicitly requested.
+
+---
+
+# STAGE 21 — Azure Deployment
+
+## Objective
+
+Deploy the production-ready application to Microsoft Azure.
+
+Exact Azure resources must be selected based on the requirements established by the completed application.
+
+Do not create unnecessary infrastructure.
+
+Deployment planning should cover:
+
+- application hosting
+- PostgreSQL hosting
+- secrets
+- monitoring
+- logging
+- networking where required
+- scheduled/background work
+- backups
+- custom domain
+- TLS/HTTPS
+
+Infrastructure decisions must be documented.
+
+Use separate configuration/secrets for development and production.
+
+## Completion Criteria
+
+- application deployed
+- database migrations applied safely
+- production secrets configured securely
+- HTTPS works
+- monitoring works
+- background processing works
+- health checks pass
+
+STOP after deployment verification.
+
+---
+
+# 3. Development Checkpoint Format
+
+At the end of every stage, report:
+
+## Stage Completed
+
+Stage number and name.
+
+## Files Created
+
+List new files.
+
+## Files Modified
+
+List modified files.
+
+## Packages Added
+
+List packages and explain why they were required.
+
+## Database Changes
+
+List schema/migration changes.
+
+## Tests and Checks
+
+Report results for relevant commands such as:
+
+- lint
+- TypeScript
+- tests
+- build
+
+## Security Check
+
+Confirm whether the stage affects:
+
+- authentication
+- authorization
+- tenant isolation
+- secrets
+- payments
+- external input
+
+## Known Issues
+
+List any unresolved issues honestly.
+
+## Next Stage
+
+Identify the next planned stage.
+
+DO NOT begin it.
+
+---
+
+# 4. Definition of a Successful Stage
+
+A stage is complete only when:
+
+- requested functionality works,
+- relevant validation exists,
+- TypeScript does not contain introduced errors,
+- lint succeeds,
+- relevant tests pass,
+- production build succeeds where appropriate,
+- tenant isolation remains intact,
+- secrets have not been committed,
+- documentation remains accurate.
+
+A partially working feature is not complete merely because the UI renders.
+
+---
+
+# 5. Current Build Position
+
+Completed stage:
+
+STAGE 1 — Application Foundation
+
+Status:
+
+COMPLETE.
+
+Next stage:
+
+STAGE 2 — Database Foundation
+
+Do not begin Stage 2 until explicitly instructed.
+
+---
+
+# 6. Core Build Rule
+
+Do not build ahead.
+
+The purpose of this plan is not to predict every detail of the finished application.
+
+The purpose is to create:
+
+one working layer
+↓
+prove it
+↓
+protect it
+↓
+add the next layer.
+
+At every point, the application should remain understandable and recoverable.
+
+Correctness and security take priority over development speed.
