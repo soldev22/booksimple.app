@@ -153,17 +153,38 @@ STOP after completion.
 
 ## Objective
 
-Connect the application to PostgreSQL and establish controlled database management.
+Establish a safe server-side Azure Cosmos DB for NoSQL foundation and controlled
+document and container management.
+
+## Decisions Before Implementation
+
+Before creating containers or connecting an environment, agree and document:
+
+- Container layout and partition keys based on access patterns, traffic, data
+  growth, retention, and uniqueness and transaction requirements.
+- The local development target: a supported emulator or an explicitly
+  authorized Azure development account. Emulator checks do not prove cloud
+  throughput, indexing, or security behavior.
+- Authentication and network access for each environment, including Vercel.
+  Prefer least-privilege identity-based access where supported; do not assume
+  Azure managed identity is available on Vercel. Any credential-based option
+  requires an explicit secure configuration decision.
+- Container configuration and document-versioning workflow, including safe
+  handling of future data and immutable partition keys.
+
+No final partition key can be selected from the current workload information.
+Creating Azure resources requires separate explicit approval.
 
 ## Build
 
-Add:
+After those decisions are agreed, add:
 
-- Prisma
-- PostgreSQL configuration
-- environment configuration
-- initial database connection
-- migration workflow
+- The official Azure Cosmos DB JavaScript SDK and server-side connection.
+- Environment configuration with no real credentials in source control.
+- Version-controlled document and container definitions and a reviewed
+  schema-evolution process.
+- Focused connection and configuration checks against the approved development
+  target.
 
 Create:
 
@@ -171,7 +192,7 @@ Create:
 
 Ensure real environment files are excluded from Git.
 
-## Initial Schema
+## Initial Document Design
 
 Create only foundation entities required for tenancy:
 
@@ -182,15 +203,18 @@ User
 BusinessMembership
 
 Do not create every future product table yet.
+These concepts are not an approved container schema or partition-key design.
+Do not implement authentication or tenant-context functionality in Stage 2.
 
 ## Completion Criteria
 
-- Prisma configured
-- PostgreSQL connection works
-- initial migration succeeds
-- application can access database server-side
+- container layout and keys are documented and approved before creation
+- the approved development connection works server-side
+- foundation document and container definitions are version controlled
+- schema evolution and recovery approach is documented and verified as applicable
+- the development target and limitations of verification are reported
 - secrets are not committed
-- schema is version controlled
+- no authentication, tenant-context, or business functionality is implemented
 
 STOP after completion.
 
@@ -206,6 +230,11 @@ Introduce user authentication.
 
 Implement the selected authentication solution.
 
+Select a proven identity provider before implementation. Support business-user
+username and password sign-in and authenticator-app TOTP MFA, including secure
+enrolment and recovery. Each business can choose whether to require MFA.
+Do not implement custom password or authenticator-secret storage.
+
 The authentication system must establish:
 
 - user identity
@@ -219,6 +248,8 @@ Do not confuse authentication with tenant authorization.
 
 - user can sign in
 - user can sign out
+- a user can enrol and complete authenticator-app MFA
+- the server can verify the authentication strength needed for a business MFA policy
 - protected routes reject unauthenticated requests
 - authenticated identity is available server-side
 - secrets remain server-side
@@ -242,6 +273,8 @@ Implement:
 - current business context
 - server-side tenant authorization
 - basic role structure
+- server-side enforcement of each business's MFA policy using verified
+  authentication strength
 
 Initial conceptual roles:
 
@@ -262,6 +295,10 @@ User in Business A can access Business A.
 User in Business A cannot access Business B.
 
 Supplying Business B's ID manually does not bypass authorization.
+
+A business requiring MFA rejects access when the authenticated session has
+not satisfied its MFA policy; a business not requiring MFA follows its
+configured policy.
 
 ## Completion Criteria
 
@@ -1095,7 +1132,7 @@ Do not create unnecessary infrastructure.
 Deployment planning should cover:
 
 - application hosting
-- PostgreSQL hosting
+- Azure Cosmos DB for NoSQL configuration and hosting
 - secrets
 - monitoring
 - logging

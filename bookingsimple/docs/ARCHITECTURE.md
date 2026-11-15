@@ -52,14 +52,18 @@ Do not create a separate frontend and backend application unless a later require
 
 # 3. Hosting
 
-The target cloud platform is Microsoft Azure.
+The current application shell is deployed on Vercel. This deployment is a
+foundation preview, not production readiness or approval to deploy business data.
+
+Microsoft Azure remains the planned platform for Cosmos DB and potential future
+hosting. The final hosting and networking arrangements have not been selected.
 
 The architecture should be compatible with Azure services without forcing application business logic to depend directly on Azure-specific APIs.
 
 Likely infrastructure may eventually include:
 
 - Azure-hosted web application
-- managed PostgreSQL database
+- Azure Cosmos DB for NoSQL
 - secret management
 - monitoring
 - background processing
@@ -73,9 +77,10 @@ Local development must remain straightforward.
 
 # 4. Database
 
-Use PostgreSQL as the primary relational database.
+Use Azure Cosmos DB for NoSQL as the primary document database. This replaces
+the previous PostgreSQL and Prisma plan; neither is required for Stage 2.
 
-PostgreSQL is appropriate because the product contains strongly related business entities including:
+The product contains related business concepts including:
 
 - tenants
 - users
@@ -87,15 +92,18 @@ PostgreSQL is appropriate because the product contains strongly related business
 - payments
 - reminders
 
-Use an ORM suitable for TypeScript.
+Use the official Azure Cosmos DB JavaScript SDK from server-side code. Reuse a
+client per server instance rather than creating one per request. Keep persistence
+behind a clear application boundary.
 
-Preferred initial ORM:
+Cosmos DB is a document database, not a relational database: it does not
+provide relational foreign keys or general cross-partition transactions.
+Document relationships, uniqueness, consistency, and failure recovery must
+be designed explicitly. Version document contracts, container configuration,
+and any required data transformations in source control.
 
-Prisma
-
-The database schema must be version controlled using migrations.
-
-Do not manually modify production database structures.
+No database account, container, authentication method, or credentials have
+been configured as part of this documentation decision.
 
 ---
 
@@ -104,6 +112,11 @@ Do not manually modify production database structures.
 Use a shared application and shared database with logical tenant isolation.
 
 Every tenant-owned record must include a tenantId.
+
+Use a unique, stable GUID to identify each business. Each tenant-owned
+activity must also have its own GUID and retain the owning business GUID.
+These identifiers identify records and link them to the business; they do not
+by themselves enforce authorization or guarantee database scalability.
 
 Example:
 
@@ -134,6 +147,36 @@ Every tenant-owned database operation must be constrained by the authenticated t
 
 Tenant isolation is a security boundary.
 
+## Partitioning and Tenant Safety
+
+Partition keys are a routing and scaling mechanism, not authorization. The
+server must verify membership and tenant ownership for reads, writes, point
+reads, and cross-partition queries. Use parameterized queries; never trust a
+tenant identifier or partition key supplied by the browser as authorization.
+
+The final container layout and partition keys are **not yet selected**. The
+tenant identifier is a candidate for tenant-owned data, but its suitability
+depends on tenant count, peak traffic, data growth, retention, and query
+patterns. A user can belong to multiple businesses, so global user identity
+and membership lookup require deliberate designs rather than assuming every
+document belongs to one tenant.
+
+Before creating each container, document its access patterns, item sizes,
+per-key growth and retention, expected read/write rates and skew, transaction
+and uniqueness requirements, and how its key is derived and kept immutable.
+Use compact, bounded key values and verify the account's key-length limits.
+Choosing one tenant value for all of a tenant's data can create a hot partition
+and is subject to the 20 GB limit per logical partition; do not assume future
+large tenants fit. Partition keys cannot be changed in place.
+
+Cosmos DB uniqueness is scoped to the full logical partition and unique-key
+policies are fixed at container creation. Do not assume global uniqueness,
+foreign keys, or atomic multi-partition operations. Define enforcement,
+conflict handling, and recovery explicitly before relying on them.
+
+The available workload evidence is insufficient to select final keys or certify
+capacity. Resolve these design questions before provisioning containers.
+
 ---
 
 # 6. Tenant Entity
@@ -159,6 +202,18 @@ Additional configuration should be added deliberately rather than turning the Bu
 # 7. Users and Authentication
 
 Authentication should use a proven authentication solution rather than custom username/password authentication.
+
+Business users must be able to sign in with a username and password and
+enrol an authenticator app for time-based one-time passcodes (TOTP). Each
+business can choose whether its users must use MFA; password-only access has
+greater risk. The identity provider and username format have not been selected.
+
+The identity provider must verify credentials and MFA, provide secure
+enrolment and recovery, and allow the server to verify the authentication
+strength needed to enforce a business's MFA policy. Never store passwords or
+authenticator secrets in application documents or treat a client-provided MFA
+claim as proof. Business-specific enforcement depends on authorized membership
+and belongs with tenant-context authorization.
 
 The application must distinguish:
 
@@ -724,10 +779,6 @@ src/
   integrations/
   types/
 
-prisma/
-  schema.prisma
-  migrations/
-
 docs/
   PRODUCT.md
   ARCHITECTURE.md
@@ -803,6 +854,10 @@ Never log:
 
 Important business actions should eventually be auditable.
 
+When recorded, tenant-owned activities must carry their own GUID and the
+owning business GUID; record the authenticated actor and time where
+appropriate. These identifiers do not substitute for authorization.
+
 Examples:
 
 - deposit override
@@ -864,19 +919,17 @@ Do not create meaningless tests purely to increase coverage percentages.
 
 ---
 
-# 36. Database Migrations
+# 36. Database Schema Evolution
 
-All schema changes must use migrations.
+Cosmos DB does not use Prisma schema migrations. Version document contracts
+and container definitions in source control, and include a schema version in
+persisted document types.
 
-During active development:
-
-1. modify the Prisma schema,
-2. generate a migration,
-3. inspect the migration,
-4. apply it,
-5. update affected tests/documentation.
-
-Never casually reset a database containing important data.
+For changes to existing data, plan and review compatibility, any backfill or
+transformation, validation, rollback, and recovery before applying the change.
+Use conditional writes such as ETags where needed to prevent lost updates.
+Changing partition keys or immutable container policies requires a separately
+reviewed container migration; never casually reset a database or delete data.
 
 ---
 
@@ -908,7 +961,7 @@ Browser
    v
 Next.js Application
    |
-   +---- PostgreSQL
+   +---- Azure Cosmos DB for NoSQL
    |
    +---- Messaging Providers
    |
@@ -961,10 +1014,10 @@ Backend:
 Next.js server-side functionality
 
 Database:
-PostgreSQL
+Azure Cosmos DB for NoSQL
 
-ORM:
-Prisma
+Database access:
+Official Azure Cosmos DB JavaScript SDK, server-side
 
 Validation:
 Zod

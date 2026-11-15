@@ -114,13 +114,11 @@ Never query tenant-owned data without tenant scoping.
 
 BAD:
 
-`findMany()`
+An unscoped query for tenant-owned data.
 
-when retrieving tenant data.
-
-GOOD conceptually:
-
-`findMany({ where: { tenantId: currentTenant.id } })`
+GOOD conceptually: authorize the current tenant on the server, then constrain
+each operation to that tenant using the agreed container and partition design.
+Partition routing alone does not provide authorization.
 
 Never trust a tenantId supplied by the browser as proof that the user may access that tenant.
 
@@ -428,22 +426,24 @@ The application should retain only the references and statuses required to manag
 
 ---
 
-# 20. Database Schema Changes Require Deliberate Migration
+# 20. Database Schema Changes Require Deliberate Review
 
 Do not modify the production database structure manually.
 
-Schema changes must be represented in the Prisma schema and migrations.
+Version Cosmos DB document contracts, container configuration, and any
+required data transformations in source control. Cosmos DB has no Prisma
+schema or relational migration guarantees.
 
 Before a significant schema change:
 
 1. explain the change,
 2. identify affected entities,
 3. consider existing data,
-4. generate a migration,
-5. inspect the migration,
-6. apply and test it.
+4. plan compatibility, backfill, validation, and recovery,
+5. review any container or data migration,
+6. apply and test it with appropriate approval.
 
-Do not casually delete columns or tables containing data.
+Do not casually delete documents or containers containing data.
 
 ---
 
@@ -455,7 +455,7 @@ Examples include:
 
 - database reset
 - drop database
-- drop table
+- delete container
 - destructive migration
 - bulk delete
 
@@ -799,7 +799,7 @@ Examples:
 - changing authentication provider
 - adding a queue platform
 - changing payment provider
-- replacing Prisma
+- changing the approved database access approach
 - introducing a new cloud service
 - splitting the application into separate services
 

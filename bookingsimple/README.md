@@ -55,14 +55,18 @@ Planned core stack:
 - Next.js
 - React
 - TypeScript
-- PostgreSQL
-- Prisma
+- Azure Cosmos DB for NoSQL
+- Azure Cosmos DB JavaScript SDK (planned server-side database access)
 - Zod
 - Microsoft Azure
 
 External messaging and payment providers are isolated behind provider adapters.
 
 The core application must not depend directly on provider-specific implementations.
+
+Cosmos DB container layouts, partition keys, and development connectivity
+remain to be agreed before Stage 2 implementation. The existing Vercel
+deployment is a foundation preview, not a production-ready business system.
 
 ---
 

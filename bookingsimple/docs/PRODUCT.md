@@ -110,6 +110,10 @@ Tenant data must remain isolated.
 
 A user belonging to Business A must never be able to access data belonging to Business B unless an explicit future platform-administration capability authorises it.
 
+Each business has a unique GUID. Tenant-owned activities must retain the
+owning business GUID and have their own activity GUID for identification.
+An identifier alone does not grant access.
+
 ---
 
 # 5. Business Onboarding
@@ -387,6 +391,11 @@ Reminder infrastructure must support reliable background processing.
 # 17. Business Users
 
 A tenant may have multiple users.
+
+Each business user must be able to sign in with a username and password.
+Authenticator-app MFA must be available, with each business able to decide
+whether MFA is required for its users. Businesses that do not require MFA
+accept the increased risk of password-only access.
 
 The product should be designed for future role-based permissions.
 
