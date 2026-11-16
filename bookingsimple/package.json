@@ -2,18 +2,31 @@
   "name": "bookingsimple",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test",
-    "typecheck": "tsc --noEmit"
+    "test": "node --conditions=react-server --import tsx --test tests/cosmos-config.test.mjs tests/auth-policy.test.mjs tests/auth-totp.test.mjs tests/auth-crypto.test.mjs tests/auth-validation.test.mjs tests/auth-registration.integration.test.mjs tests/auth-session.integration.test.mjs tests/auth-mfa.integration.test.mjs tests/auth-page-access.integration.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "provision:auth": "node --conditions=react-server --import tsx scripts/provision-auth.ts",
+    "bootstrap:admin": "node --conditions=react-server --import tsx scripts/bootstrap-admin.ts",
+    "retry:auth-email": "node --conditions=react-server --import tsx scripts/retry-auth-notifications.ts",
+    "test:auth-cosmos": "node --conditions=react-server --import tsx scripts/check-auth-cosmos.ts"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.10.2",
+    "@azure/identity": "^4.14.1",
+    "@vercel/oidc": "^4.0.9",
     "next": "16.4.6",
+    "otpauth": "^9.6.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
@@ -21,6 +34,7 @@
     "@types/react-dom": "19.3.0",
     "eslint": "10.15.0",
     "eslint-config-next": "16.4.6",
+    "tsx": "^4.23.15",
     "typescript": "6.0.3"
   }
 }

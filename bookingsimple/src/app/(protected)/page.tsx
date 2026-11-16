@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getViewer } from "@/server/auth";
 
 type IconName =
   | "dashboard"
@@ -122,7 +124,8 @@ const dashboardMetrics = [
   { label: "Services", detail: "Service tools are coming later" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  if (!(await getViewer())) redirect("/login");
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -175,7 +178,7 @@ export default function Home() {
           </div>
           <div className="topbar-status">
             <span aria-hidden="true" className="status-dot" />
-            Foundation ready
+            <Link href="/account">My account</Link>
           </div>
         </header>
 

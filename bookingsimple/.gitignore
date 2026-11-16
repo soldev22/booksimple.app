@@ -14,6 +14,8 @@
 # Environment files
 .env*
 !.env.example
+# Protect commonly misnamed local environment files too.
+env.local
 
 # Deployment
 .vercel/

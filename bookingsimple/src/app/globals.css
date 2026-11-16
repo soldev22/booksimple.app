@@ -869,6 +869,155 @@ a:focus-visible {
       border-color 140ms ease;
   }
 
+  .account-shell {
+    width: min(100% - 32px, 500px);
+    margin: 40px auto;
+  }
+
+  .account-shell-wide {
+    max-width: 900px;
+    width: calc(100% - 32px);
+  }
+
+  .account-brand {
+    display: inline-block;
+    margin-bottom: 24px;
+    color: var(--accent-strong);
+    font-size: 24px;
+    font-weight: 750;
+  }
+
+  .account-card {
+    padding: clamp(20px, 4vw, 36px);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+  }
+
+  .account-card h1 {
+    margin: 8px 0 12px;
+    font-size: clamp(24px, 4vw, 32px);
+  }
+
+  .account-card h2 {
+    font-size: 18px;
+  }
+
+  .account-description,
+  .account-field small {
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+
+  .account-form,
+  .account-field {
+    display: grid;
+    gap: 10px;
+  }
+
+  .account-form {
+    margin: 24px 0;
+    gap: 18px;
+  }
+
+  .account-field input,
+  .account-field select {
+    min-width: 0;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #bfc3d1;
+    border-radius: 8px;
+    color: var(--ink);
+    background: var(--surface);
+    font: inherit;
+  }
+
+  .account-field input:focus-visible,
+  .account-field select:focus-visible {
+    outline: 3px solid #a9a4ff;
+    outline-offset: 2px;
+  }
+
+  .account-button {
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 1px solid var(--accent-strong);
+    border-radius: 8px;
+    color: #fff;
+    background: var(--accent-strong);
+    cursor: pointer;
+  }
+
+  .account-button-secondary {
+    color: var(--accent-strong);
+    background: var(--surface);
+  }
+
+  .account-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .account-links,
+  .account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  .account-links a {
+    color: var(--accent-strong);
+    text-decoration: underline;
+  }
+
+  .account-error,
+  .account-notice {
+    padding: 12px;
+    border-radius: 8px;
+    line-height: 1.6;
+  }
+
+  .account-error {
+    color: #8b2331;
+    background: #fff0f2;
+  }
+
+  .account-notice {
+    background: var(--accent-soft);
+  }
+
+  .account-section,
+  .admin-user {
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+
+  .account-section summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .assignment-form {
+    display: grid;
+    gap: 16px;
+    margin: 20px 0;
+  }
+
+  .backup-codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding-left: 20px;
+  }
+
+  .setup-secret,
+  .admin-user p {
+    overflow-wrap: anywhere;
+  }
+
   .navigation-link-active:hover {
     background: #e9e7ff;
   }

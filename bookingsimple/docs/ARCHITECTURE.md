@@ -55,8 +55,8 @@ Do not create a separate frontend and backend application unless a later require
 The current application shell is deployed on Vercel. This deployment is a
 foundation preview, not production readiness or approval to deploy business data.
 
-Microsoft Azure remains the planned platform for Cosmos DB and potential future
-hosting. The final hosting and networking arrangements have not been selected.
+The initial plan keeps the web application and its server-side API on Vercel
+and Cosmos DB on Azure. No separate API service is planned.
 
 The architecture should be compatible with Azure services without forcing application business logic to depend directly on Azure-specific APIs.
 
@@ -102,8 +102,50 @@ Document relationships, uniqueness, consistency, and failure recovery must
 be designed explicitly. Version document contracts, container configuration,
 and any required data transformations in source control.
 
-No database account, container, authentication method, or credentials have
-been configured as part of this documentation decision.
+A serverless Cosmos DB account has been created in UK South with public network
+access and account-key authentication enabled, with seven-day continuous backup.
+The registration database and three auth containers have been provisioned,
+and local synthetic-data access has been verified. The account is not yet
+approved for real data.
+
+The server-side Cosmos client supports a local-development-only account key or
+Azure CLI credentials locally, and supports Vercel OIDC federation. Account
+metadata access has been verified locally;
+Vercel federation has not yet been configured or verified. The client does not
+create databases or containers.
+
+## Initial Connectivity Decision
+
+The approved initial approach for development and production is to access the
+Cosmos DB public endpoint from server-side application code. Public network
+access increases exposure: anyone can reach the endpoint, though database
+access still requires valid authorization. A compromised identity with database
+permissions could bypass application-level tenant checks.
+
+Use Microsoft Entra ID and least-privilege Cosmos DB data-plane permissions,
+with short-lived credentials for deployed environments. The explicitly approved
+local key mode is rejected in production and on Vercel, but enabling keys is
+an account-wide setting: any holder can access account data outside the
+application's authorization controls. Keep keys out of Git and logs; plan
+rotation, secure storage and separate development resources, and reassess
+disabling keys before accepting real data. For Vercel, plan workload identity federation
+through OIDC; do not assume Azure managed identity exists there. Local
+development may use the approved key or an explicitly authorised identity. Never expose database
+credentials to the browser. Review identity scopes, deployment environments,
+monitoring, alerts and incident response before enabling access.
+
+The existing Azure account is the intended initial development target, using
+synthetic test data only. The current development identity has the built-in
+Cosmos DB Data Contributor role at account scope. Review or narrow this access
+before accepting real data. Before accepting real data, agree
+and verify safe separation of development and production access and data;
+do not treat a shared account as isolated merely because records are labelled
+as test data. Authentication, tenant authorization and the other security
+controls must be implemented and verified first.
+
+Revisit IP-restricted or private networking when commercial circumstances
+and the security assessment justify the additional cost. No upgrade or
+timeline is assumed.
 
 ---
 
@@ -139,27 +181,34 @@ Booking
   id
   tenantId
 
-The server must derive the current tenant from the authenticated user's tenant membership.
+For business users, the server must derive the current tenant from the
+authenticated user's tenant membership.
 
 Do not accept an arbitrary tenantId from the browser and trust it.
 
-Every tenant-owned database operation must be constrained by the authenticated tenant context.
+Business-user database operations must be constrained by the authenticated
+tenant context. A separately authorised platform administrator may access
+tenant data across businesses; that access must be checked server-side and
+audited. A tenant role must never grant platform-wide access.
 
 Tenant isolation is a security boundary.
 
 ## Partitioning and Tenant Safety
 
 Partition keys are a routing and scaling mechanism, not authorization. The
-server must verify membership and tenant ownership for reads, writes, point
-reads, and cross-partition queries. Use parameterized queries; never trust a
-tenant identifier or partition key supplied by the browser as authorization.
+server must verify membership and tenant ownership for business-user reads,
+writes, point reads, and cross-partition queries. Separately authorised
+platform-administrator access must also be verified and audited. Use
+parameterized queries; never trust a tenant identifier or partition key
+supplied by the browser as authorization.
 
-The final container layout and partition keys are **not yet selected**. The
+The registration container layout is selected below; keys for future
+customer, communications and booking containers are **not yet selected**. The
 tenant identifier is a candidate for tenant-owned data, but its suitability
 depends on tenant count, peak traffic, data growth, retention, and query
-patterns. A user can belong to multiple businesses, so global user identity
-and membership lookup require deliberate designs rather than assuming every
-document belongs to one tenant.
+patterns. A user can belong to at most one business, while platform identity,
+pending applications and platform-administrator access are not ordinary
+tenant-owned records. Their lookup and storage still require deliberate design.
 
 Before creating each container, document its access patterns, item sizes,
 per-key growth and retention, expected read/write rates and skew, transaction
@@ -174,8 +223,61 @@ policies are fixed at container creation. Do not assume global uniqueness,
 foreign keys, or atomic multi-partition operations. Define enforcement,
 conflict handling, and recovery explicitly before relying on them.
 
-The available workload evidence is insufficient to select final keys or certify
-capacity. Resolve these design questions before provisioning containers.
+The available workload evidence does not certify production capacity.
+Resolve these design questions before provisioning future containers.
+Initial planning estimates are 100 businesses, 1,000 users, up to 200 staff in
+one business, 10 simultaneously active users and 10 sign-ins per minute.
+Platform-administrator audit history must be retained for one year. These
+estimates do not establish document sizes, audit-event volume or data growth.
+
+## Implemented Registration Storage
+
+Database: `booksimple`. All three containers use the immutable
+`/partitionKey` path with Hash partitioning and `defaultTtl=-1` (TTL enabled;
+documents expire only when they specify a TTL).
+
+| Container | Partition derivation | Records and retention |
+| --- | --- | --- |
+| `auth-control` | `account_` plus SHA-256 of trimmed, lowercase email; business GUID for business records | User/security state, hashed verification/reset tokens, encrypted email outbox, business state and username reservations, one-year admin audits, durable bootstrap lock |
+| `auth-sessions` | Owning immutable account partition key | Hashed session verifiers; maximum seven-day lifetime, explicit revocation and account authorization version checks |
+| `auth-throttles` | Hash of rate-limit scope and protected account key | Expiring, ETag-protected counters; no in-memory-only abuse protection |
+
+User GUIDs are retained separately from the deterministic account document ID.
+Registration creates the user, deterministic email index, verification token
+and encrypted email outbox in one account-partition transaction. Deterministic
+IDs enforce email uniqueness even under concurrent registration; no query-only
+global uniqueness check or global Cosmos unique-key policy is assumed.
+
+An account has at most one embedded business membership. Business-partition
+username reservations and the bounded member count are updated transactionally
+using ETags; account membership writes also require ETags. Company usernames
+are lowercase and unique within their business, with a 200-user ceiling.
+Moving an assigned user to a different business is rejected.
+
+Approval spans account and business partitions, so it is not globally atomic.
+It reserves the owner username, records the account membership, then activates
+the business. The server withholds membership for a non-active business;
+interrupted approval can be retried without granting access to a pending
+business. Reservations are compensated when an account assignment fails.
+Inspect failed/unfinished admin audit records before manual repair.
+
+Privileged actions have actor-scoped audit records, with affected-account
+changes and their audit entries committed together. No secrets or notification
+payloads belong in audit records. Role/membership changes increment the
+account authorization version to invalidate older sessions.
+
+The one-time bootstrap lock has its own fixed platform partition and no TTL.
+It pins the target user and setup-token hash, allows retries for that target
+and permanently prevents selecting a different first administrator.
+No first administrator is created merely by provisioning containers.
+
+The initial access patterns are account/session point reads, bounded
+business-partition writes and paginated platform-admin directory queries.
+Token TTLs are 24 hours for verification and one hour for password reset;
+audits and email outbox records have a one-year TTL. MFA secrets and pending
+outbox payloads use independent server-managed AES-256-GCM keys. Delivered
+outbox payloads are removed. Future domain containers need separate estimates
+and approval; this layout is not a design for storing all future tenant data.
 
 ---
 
@@ -201,19 +303,44 @@ Additional configuration should be added deliberately rather than turning the Bu
 
 # 7. Users and Authentication
 
-Authentication should use a proven authentication solution rather than custom username/password authentication.
+The approved direction is a custom application-managed email and password
+system. All users use the same registration and sign-in system. Email
+addresses are unique across the platform and cannot initially be changed.
+Company usernames are distinct from
+email addresses and unique only within their business; a platform
+administrator's display name is optional. Never store plaintext passwords. Use a
+well-reviewed password-hashing implementation, secure password recovery and
+login-abuse protections.
 
-Business users must be able to sign in with a username and password and
-enrol an authenticator app for time-based one-time passcodes (TOTP). Each
-business can choose whether its users must use MFA; password-only access has
-greater risk. The identity provider and username format have not been selected.
+Use an unpredictable server-validated session token in a Secure, HttpOnly,
+appropriately SameSite cookie. The server must check session validity, expiry,
+revocation and authorization; the presence of a GUID or cookie alone does not
+authenticate a user. Sessions last at most seven days. Protect state-changing
+requests against CSRF.
 
-The identity provider must verify credentials and MFA, provide secure
-enrolment and recovery, and allow the server to verify the authentication
-strength needed to enforce a business's MFA policy. Never store passwords or
-authenticator secrets in application documents or treat a client-provided MFA
-claim as proof. Business-specific enforcement depends on authorized membership
-and belongs with tenant-context authorization.
+Application pages live in the `(protected)` route group and require a
+server-validated session; registration, login, verification and password
+recovery are intentionally public in the `(public)` group. New pages must be
+placed in the protected group unless explicitly approved as public. Layout
+checks do not replace checks in pages, data access, server actions or API
+handlers: Next.js can reuse layouts during client navigation. Each protected
+page and operation must independently enforce its authentication and role or
+tenant authorization before loading protected data.
+
+MFA is temporarily disabled for all users, including platform administrators,
+by explicit product decision. Login uses verified email and password; platform
+access still requires the server-verified platform role and is audited.
+Password-only platform access substantially increases account-takeover risk;
+reassess MFA and security before real data or production use.
+Previously stored encrypted MFA secrets and backup-code verifiers are retained,
+not deleted. MFA setup and challenge endpoints and UI are unavailable; retain
+the encryption key securely while those records exist. Re-enabling MFA requires
+an explicit design and security review, not simply exposing the old endpoints.
+
+Before implementation, review the credential, session, MFA, recovery,
+administrator-bootstrap and abuse-prevention design, including key management
+and data storage. No real data may be used until these controls and tenant
+isolation are implemented and verified.
 
 The application must distinguish:
 
@@ -225,25 +352,47 @@ from:
 Authorization:
 "What is this user allowed to do?"
 
-A user must be associated with one or more businesses through an explicit membership model.
+A user can have at most one business membership. Pending applicants and
+platform administrators do not require a business membership. Platform access
+is a separate role, not a tenant membership.
 
-Conceptual structure:
+## Agreed Foundation Data
 
-User
-  id
-  identityProviderId
-  email
-  name
+The following is the broader logical foundation. The implemented registration
+subset uses the container layout above; invitations and future domain records
+remain deferred. Identifiers for businesses and tenant-owned
+activities are GUIDs; tenant-owned records retain the business ID. Persisted
+documents include a schema version. The registration contracts are implemented
+in the server auth modules; future contracts require separate review.
 
-BusinessMembership
-  id
-  userId
-  businessId
-  role
+| Record | Agreed information |
+| --- | --- |
+| Business | ID, name, status, creation and update timestamps |
+| User | ID, globally unique email, name, account status and securely protected sign-in details |
+| BusinessMembership | ID, business ID, user ID, company username and company role |
+| BusinessApplication | Applicant user ID, proposed business name, status and approval decision |
+| Invitation | Business ID, invitee email, role, status and expiry |
+| Session | Server-validated session information, including expiry and revocation |
+| Platform-admin audit | Actor, action, affected scope and timestamp |
 
-This allows the architecture to support a user belonging to more than one business in the future.
+Company administrators invite and assign company users. Platform administrators
+approve business applications and assign company administrators. Only an
+existing platform administrator can grant another user the platform role.
+New users cannot access a workspace until assigned an appropriate role, but
+pending applicants can submit and check their applications.
 
-Do not embed permanent business ownership directly inside the User record.
+Use Postmark for application-decision and invitation emails. Its credentials
+must remain server-side and out of source control. The first platform
+administrator is to be provisioned through a secure one-time setup after
+registering; subsequent platform-administrator grants require an existing
+platform administrator.
+
+Email uniqueness across the platform, company-username uniqueness within a
+business, and the one-business-per-user rule require race-safe enforcement.
+Cosmos DB unique-key policies apply only within a logical partition; a
+check-then-write query does not enforce these rules under concurrent requests.
+The uniqueness, provisioning, session, MFA and recovery mechanisms and their
+failure handling must be designed and reviewed before implementation.
 
 ---
 
@@ -253,9 +402,15 @@ All protected operations must be authorized server-side.
 
 Initial conceptual roles:
 
-- OWNER
-- ADMIN
-- STAFF
+- Platform administrator: full platform and cross-business access, separate
+  from tenant membership, with audited actions and currently password-only login.
+- Company administrator: manages its own business and invites its users.
+- Staff: manages bookings within its own business.
+
+Businesses register for approval by a platform administrator. Their workspace
+is enabled only after approval. Applicants can check application status and
+receive approval or rejection notifications by email. Customers do not need
+application accounts.
 
 Do not create an excessively complicated permissions system during V1.
 

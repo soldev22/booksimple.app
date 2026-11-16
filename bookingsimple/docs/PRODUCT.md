@@ -108,7 +108,10 @@ Each tenant must have its own:
 
 Tenant data must remain isolated.
 
-A user belonging to Business A must never be able to access data belonging to Business B unless an explicit future platform-administration capability authorises it.
+A business user belonging to Business A must never gain access to Business B
+through their business membership. An explicitly authorised platform
+administrator may access data across businesses in their separate platform
+role.
 
 Each business has a unique GUID. Tenant-owned activities must retain the
 owning business GUID and have their own activity GUID for identification.
@@ -131,6 +134,14 @@ A business should eventually be able to:
 9. begin receiving and responding to customer communications.
 
 Onboarding should be kept as simple as possible.
+
+Businesses register for a workspace, but a platform administrator must approve
+the application before the workspace is enabled. Applicants can check their
+application status and receive approval or rejection notifications by email.
+Company administrators invite users to join their company.
+
+Customers communicate through existing channels and do not need application
+accounts. A channel message alone does not establish a customer's identity.
 
 ---
 
@@ -392,22 +403,28 @@ Reminder infrastructure must support reliable background processing.
 
 A tenant may have multiple users.
 
-Each business user must be able to sign in with a username and password.
-Authenticator-app MFA must be available, with each business able to decide
-whether MFA is required for its users. Businesses that do not require MFA
-accept the increased risk of password-only access.
+Each business user must be able to sign in with an email address and password.
+Authenticator-app MFA is temporarily unavailable for all users by explicit
+product decision. This increases the risk of account takeover, particularly
+for platform administrators with access across businesses.
 
-The product should be designed for future role-based permissions.
+All users register and sign in through the same account system. Email addresses
+are unique across the platform and cannot initially be changed; company
+usernames are unique only within their company. A user can belong to at most
+one business. Selected users can be
+granted a separate platform-administrator role with access across businesses.
+A platform
+administrator's display name is optional. Company administrators manage their
+own business and invite its users. Staff users manage bookings for their own
+business.
 
-Likely conceptual roles include:
+New users cannot access a workspace until assigned an appropriate role.
+Pending applicants can submit and check their business application. Platform
+administrators approve businesses and assign company administrators. Only an
+existing platform administrator can grant the platform-administrator role.
 
-- business owner
-- administrator
-- staff
-
-Detailed permissions will be defined later.
-
-Do not create a complex permissions model before it is required.
+Detailed permissions, account recovery, and administrator provisioning must
+be designed before implementation.
 
 ---
 

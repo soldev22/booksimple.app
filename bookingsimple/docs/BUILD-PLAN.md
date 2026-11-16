@@ -162,18 +162,26 @@ Before creating containers or connecting an environment, agree and document:
 
 - Container layout and partition keys based on access patterns, traffic, data
   growth, retention, and uniqueness and transaction requirements.
-- The local development target: a supported emulator or an explicitly
-  authorized Azure development account. Emulator checks do not prove cloud
-  throughput, indexing, or security behavior.
-- Authentication and network access for each environment, including Vercel.
-  Prefer least-privilege identity-based access where supported; do not assume
-  Azure managed identity is available on Vercel. Any credential-based option
-  requires an explicit secure configuration decision.
+- The approved initial development target is the existing Azure Cosmos DB
+  account, using synthetic data only. Before real data is accepted, agree and
+  verify separation of development and production access and data.
+- The approved initial connectivity approach is a public Cosmos DB endpoint
+  with an account key for local development or least-privilege Microsoft Entra
+  data-plane access. Plan Vercel OIDC
+  federation and separately authorised local development access; do not assume
+  Azure managed identity is available on Vercel. Review deployment identity,
+  permissions, monitoring and incident response before enabling access.
 - Container configuration and document-versioning workflow, including safe
   handling of future data and immutable partition keys.
 
-No final partition key can be selected from the current workload information.
-Creating Azure resources requires separate explicit approval.
+Registration partition keys and containers are now approved and documented
+in `docs/ARCHITECTURE.md`. Future domain containers require separate decisions.
+Public network and key authentication have been enabled on the existing
+account. Key authentication is account-wide even though the application
+restricts key mode to local development; review this risk before real data.
+Creating additional Azure resources requires
+separate explicit approval. Revisit restricted or private networking when
+commercial circumstances and the security assessment justify the cost.
 
 ## Build
 
@@ -186,6 +194,10 @@ After those decisions are agreed, add:
 - Focused connection and configuration checks against the approved development
   target.
 
+The server-side client, explicit auth container provisioning/readback, and local
+synthetic persistence checks are in place. Vercel federation and safe deployment
+environment separation remain unverified.
+
 Create:
 
 `.env.example`
@@ -194,7 +206,7 @@ Ensure real environment files are excluded from Git.
 
 ## Initial Document Design
 
-Create only foundation entities required for tenancy:
+Start with foundation entities required for tenancy:
 
 Business
 
@@ -202,8 +214,10 @@ User
 
 BusinessMembership
 
-Do not create every future product table yet.
-These concepts are not an approved container schema or partition-key design.
+The agreed logical registration design also identifies applications,
+invitations, sessions and platform-administrator audit records; see
+`docs/ARCHITECTURE.md`. The registration subset has an approved container design;
+invitations and future product entities remain deferred.
 Do not implement authentication or tenant-context functionality in Stage 2.
 
 ## Completion Criteria
@@ -226,14 +240,63 @@ STOP after completion.
 
 Introduce user authentication.
 
+## Current Registration Implementation Scope
+
+The approved implementation combines the authentication and authorization
+prerequisites needed for registration and platform administration. Include:
+
+- email/password registration and email verification
+- seven-day revocable sessions and password recovery
+- password-only sign-in for all roles while MFA is temporarily disabled
+- a protected platform-administrator area
+- a secure one-time first-administrator setup after registration
+- business-application approval and assignment of registered users
+
+Do not add booking functionality or company invitation management in this
+step. Account registration must never let an applicant select privileged
+roles. Platform privileges require server-side role authorization. Removing MFA
+increases the risk of platform-wide compromise and must be reassessed before
+real data or production use.
+
+### Testing Strategy
+
+Use focused tests for password/session handling, platform authorization,
+tenant boundaries and unauthorized role changes. Use the authorised Cosmos
+account to verify container policies and persistence with uniquely identified
+synthetic records, cleaning up only those records afterwards. Mock Postmark
+for deterministic failure tests; do not claim mocked delivery is live delivery.
+
+The opt-in lifecycle tests cover registration and one-time verification,
+provider failure and verification resend, password reset and session
+revocation. They use real Cosmos
+storage and a stubbed Postmark transport, with UUID-scoped cleanup. The
+synthetic security script separately exercises bootstrap locking and
+privileged role/membership checks and races. See `README.md` for commands.
+
+Browser checks exercise registration, login/recovery/resend feedback,
+responsive layout and protected-page redirects. Mocked API checks validate
+UI behavior only; live Cosmos checks and server-side authorization tests
+are separate evidence. Real Postmark delivery, deployed Vercel OIDC access
+and initial administrator bootstrap remain unverified and must be configured
+and validated before accepting real data.
+
+Exercise rendered registration and sign-in forms in a browser, including
+mobile layout, failed requests and protected-page redirects. Verify actual
+registration, verification and administrator workflows against configured
+services before production use. Vercel OIDC and actual Postmark delivery must
+be reported separately from local or mocked validation. Run tests, lint,
+typecheck and production build before reporting completion.
+
 ## Build
 
-Implement the selected authentication solution.
+The approved direction is application-managed email and password
+authentication. Before implementation, review password hashing, session
+management, login-abuse protection, retained MFA encryption and key management,
+recovery, and initial platform-administrator provisioning.
 
-Select a proven identity provider before implementation. Support business-user
-username and password sign-in and authenticator-app TOTP MFA, including secure
-enrolment and recovery. Each business can choose whether to require MFA.
-Do not implement custom password or authenticator-secret storage.
+Authenticator MFA is temporarily unavailable for all roles. Existing encrypted
+MFA data is retained. Review the security impact before production or restoring
+MFA; do not assume the former endpoints remain enabled.
 
 The authentication system must establish:
 
@@ -241,6 +304,7 @@ The authentication system must establish:
 - server-side session
 - protected application routes
 - authenticated user retrieval
+- server-side session expiry and revocation
 
 Do not confuse authentication with tenant authorization.
 
@@ -248,8 +312,6 @@ Do not confuse authentication with tenant authorization.
 
 - user can sign in
 - user can sign out
-- a user can enrol and complete authenticator-app MFA
-- the server can verify the authentication strength needed for a business MFA policy
 - protected routes reject unauthenticated requests
 - authenticated identity is available server-side
 - secrets remain server-side
@@ -272,17 +334,8 @@ Implement:
 - Business membership lookup
 - current business context
 - server-side tenant authorization
-- basic role structure
-- server-side enforcement of each business's MFA policy using verified
-  authentication strength
-
-Initial conceptual roles:
-
-OWNER
-
-ADMIN
-
-STAFF
+- separate platform-administrator, company-administrator and staff roles
+- server-side authorization and auditing of platform-administrator actions
 
 Create reusable mechanisms for obtaining the authorized business context.
 
@@ -296,9 +349,8 @@ User in Business A cannot access Business B.
 
 Supplying Business B's ID manually does not bypass authorization.
 
-A business requiring MFA rejects access when the authenticated session has
-not satisfied its MFA policy; a business not requiring MFA follows its
-configured policy.
+A signed-in platform administrator can exercise platform access without MFA;
+tenant membership alone must not grant platform-wide access.
 
 ## Completion Criteria
 
@@ -316,6 +368,13 @@ STOP after completion.
 ## Objective
 
 Allow the basic business profile to be managed.
+
+Business registration requires platform-administrator approval before the
+workspace is enabled. Applicants can check application status and receive
+approval or rejection notifications by email. Company administrators invite
+their users. Use Postmark for decision and invitation emails. Design the
+workflow and notification integration before
+implementation; authentication and tenant authorization remain prerequisites.
 
 ## Build
 
@@ -1244,11 +1303,11 @@ Status:
 
 COMPLETE.
 
-Next stage:
+Current work:
 
-STAGE 2 — Database Foundation
-
-Do not begin Stage 2 until explicitly instructed.
+STAGE 2 — Database Foundation, in progress. Registration planning has also
+been requested; implementation still requires the database, authentication,
+and tenant-authorization prerequisites to be designed and verified.
 
 ---
 

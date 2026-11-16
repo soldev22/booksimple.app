@@ -110,15 +110,17 @@ Examples include:
 - settings
 - integration configurations
 
-Never query tenant-owned data without tenant scoping.
+Never query tenant-owned data without tenant scoping, except for an explicitly
+authorised and audited platform-administrator operation. A business role or
+client-supplied tenant identifier must never grant platform-wide access.
 
 BAD:
 
 An unscoped query for tenant-owned data.
 
 GOOD conceptually: authorize the current tenant on the server, then constrain
-each operation to that tenant using the agreed container and partition design.
-Partition routing alone does not provide authorization.
+each business-user operation to that tenant using the agreed container and
+partition design. Partition routing alone does not provide authorization.
 
 Never trust a tenantId supplied by the browser as proof that the user may access that tenant.
 

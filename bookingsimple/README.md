@@ -56,7 +56,7 @@ Planned core stack:
 - React
 - TypeScript
 - Azure Cosmos DB for NoSQL
-- Azure Cosmos DB JavaScript SDK (planned server-side database access)
+- Azure Cosmos DB JavaScript SDK (server-side database access)
 - Zod
 - Microsoft Azure
 
@@ -64,9 +64,136 @@ External messaging and payment providers are isolated behind provider adapters.
 
 The core application must not depend directly on provider-specific implementations.
 
-Cosmos DB container layouts, partition keys, and development connectivity
-remain to be agreed before Stage 2 implementation. The existing Vercel
-deployment is a foundation preview, not a production-ready business system.
+Registration uses the reviewed auth containers described in
+[ARCHITECTURE.md](docs/ARCHITECTURE.md); future business-domain containers still
+require separate design approval. The initial connectivity plan uses the public Cosmos DB endpoint with
+Microsoft Entra authentication for deployment and an explicitly approved
+account key for local development; public access and account-key authentication
+are enabled account-wide. Development uses synthetic data only, and restricted
+networking will be revisited as the business and security needs warrant. The
+existing Vercel deployment is a foundation preview, not a production-ready
+business system.
+
+### Cosmos DB connection
+
+Use Node.js 22 or later. For local development, copy `.env.example` to
+`.env.local`, set `COSMOS_DB_ENDPOINT` to the account endpoint, set
+`COSMOS_AUTH_MODE=key`, and supply the account's primary or secondary
+read-write key as `COSMOS_DB_KEY`. Keep the key private and never commit or
+share it. The key mode is restricted to local development; it is rejected
+on Vercel and when `NODE_ENV=production`.
+
+Alternatively, `COSMOS_AUTH_MODE=azure-cli` uses an authorised signed-in
+Azure CLI identity locally. Azure management tasks such as provisioning
+containers still require an authorised management-plane identity.
+
+On Vercel, set `COSMOS_AUTH_MODE=vercel-oidc`, `COSMOS_DB_ENDPOINT`,
+`AZURE_TENANT_ID` and `AZURE_CLIENT_ID`. The Entra application, Vercel OIDC
+federation and Cosmos data-plane role must be configured separately; they have
+not yet been verified. The deployed application continues to use Entra rather
+than account keys.
+
+An account key grants broad account-wide data access and cannot enforce the
+application's tenant boundaries; a leaked key must be rotated. Enabling keys
+applies to the entire shared account even though the application uses them
+only locally. Consider dedicated development resources, secret management,
+rotation and disabling keys again before using real data.
+
+The Azure Identity SDK remains a native server dependency via
+`serverExternalPackages`, preventing its platform-specific credential helpers
+from being bundled as application modules.
+
+The request-time client does not create databases or containers. The explicit
+provisioning script creates and reads back the reviewed registration containers.
+Use synthetic data only until deployment identity, security and environment
+separation are verified.
+
+### Registration and administration setup
+
+The application now includes registration, email verification/resend, sign-in,
+password reset and platform-admin
+business approval and role assignment. Customers do not need application
+accounts. Verifying an email allows access to the account page, not a business
+workspace; a business membership must be assigned separately. MFA is
+temporarily unavailable for all users, including platform administrators.
+Password-only platform access carries a substantially higher security risk
+and must be reassessed before using real data or deploying to production.
+
+1. Configure `.env.local` from `.env.example` using one of the local Cosmos
+   authentication options above.
+   Set the exact `APP_ORIGIN` (for example `http://localhost:3000` locally,
+   HTTPS in production). Production requests and email links must use the same
+   origin.
+2. Generate a 32-byte base64 value for `AUTH_NOTIFICATION_ENCRYPTION_KEY`
+   using the command in `.env.example`. Keep it server-side and securely
+   backed up; losing or replacing it makes existing encrypted outbox data
+   unreadable. Preserve any existing `AUTH_MFA_ENCRYPTION_KEY` securely while
+   retained MFA records exist.
+3. Set `POSTMARK_SERVER_TOKEN`, the verified `POSTMARK_FROM_EMAIL`, and the
+   appropriate message stream in the server environment. Never put credentials
+   in client-side variables, Git or chat. Email-provider failures are reported
+   explicitly; a created account can request a new verification email at
+   `/verify`. Pending/failed email outbox entries can also be retried by the
+   operator script.
+4. The `booksimple` database with `auth-control`, `auth-sessions` and
+   `auth-throttles` has been provisioned in the approved Azure account.
+   To provision or verify another approved target, set
+   `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` and run:
+
+   ```powershell
+   node --env-file=.env.local --conditions=react-server --import tsx scripts\provision-auth.ts
+   ```
+
+   This requires an authorized Azure management-plane identity. Normal
+   application access uses Cosmos data-plane permissions; no runtime
+   provisioning is performed.
+5. Run `npm run dev`, register an account and verify the email.
+6. An authorized operator can grant the **first** platform administrator only
+   after that account has verified its email. Supply a random
+   operator-managed `PLATFORM_BOOTSTRAP_SETUP_TOKEN` of at least 32 bytes in the
+   operator environment, then intentionally run:
+
+   ```powershell
+   node --env-file=.env.local --conditions=react-server --import tsx scripts\bootstrap-admin.ts --email user@example.com --confirm
+   ```
+
+   No email address is hardcoded or automatically privileged. The durable
+   one-time lock allows retry for the same account, not a different account.
+   Remove the setup token from the environment after completion. Sign in
+   again before opening `/admin`. Subsequent grants require an existing
+   authenticated platform administrator.
+
+For queued email retries:
+
+```powershell
+node --env-file=.env.local --conditions=react-server --import tsx scripts\retry-auth-notifications.ts
+```
+
+These standalone scripts do not automatically load `.env.local`; the commands
+above do so explicitly. Production can instead inject environment variables.
+No real email delivery, deployed Vercel federation or initial administrator
+bootstrap has been verified or performed as part of implementation.
+
+### Validation
+
+Run `npm test`, `npm run lint`, `npm run typecheck` and `npm run build`.
+The opt-in auth lifecycle tests use real Cosmos storage and a **stubbed**
+Postmark transport: they do not prove real email delivery. With an approved
+synthetic-data target and the environment configured above, set
+`AUTH_COSMOS_INTEGRATION_TESTS=1` in the process environment and run:
+
+```powershell
+node --env-file=.env.local --conditions=react-server --import tsx --test tests\auth-registration.integration.test.mjs tests\auth-session.integration.test.mjs tests\auth-mfa.integration.test.mjs
+node --env-file=.env.local --conditions=react-server --import tsx scripts\check-auth-cosmos.ts
+```
+
+The lifecycle tests create UUID-scoped synthetic accounts and remove their
+account, business, session and exact throttle records during cleanup.
+The security check covers password-only platform role access, one-time bootstrap
+locking, membership races and session invalidation with synthetic data.
+The retained internal MFA tests exercise dormant implementation details, not
+available user flows; MFA HTTP endpoints are disabled.
+Neither command creates a real administrator or sends email.
 
 ---
 
@@ -157,11 +284,14 @@ Status:
 
 COMPLETE.
 
-Next stage:
+Current work:
 
-STAGE 2 — Database Foundation
+STAGE 3 — Registration and platform administration, with the necessary
+database and server-side authorization foundation implemented.
 
-Do not implement Stage 2 until explicitly instructed.
+Company-managed invitations, business workspace features and later booking
+stages are not implemented by this step. Live service configuration and
+deployment verification remain prerequisites before use with real data.
 
 ---
 
