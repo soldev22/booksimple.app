@@ -12,6 +12,7 @@ import {
   type AuthDocument,
   type Versioned,
 } from "./auth-storage";
+import { resolveTenantContext } from "./tenant-context";
 import type { UserView, Viewer } from "./auth-types";
 
 export const AUTH_COOKIE_NAME = "booksimple_session";
@@ -128,26 +129,23 @@ export async function getViewer(): Promise<Viewer | null> {
   if (!token) {
     return null;
   }
+  return getViewerForToken(token);
+}
+
+export async function getViewerForToken(token: string): Promise<Viewer | null> {
   const authenticated = await resolveSessionToken(token);
   if (!authenticated) {
     return null;
   }
   const user = toUserView(authenticated.user.document);
-  if (user.membership) {
-    const business = await readDocument<
-      AuthDocument & { status: string }
-    >(
-      controlContainer(),
-      user.membership.tenantId,
-      user.membership.tenantId,
-    );
-    if (business?.document.type !== "business" || business.document.status !== "active") {
-      delete user.membership;
-    }
+  const tenant = await resolveTenantContext(authenticated.user.document);
+  if (user.membership && !tenant) {
+    delete user.membership;
   }
   return {
     user,
     mfaVerified: authenticated.session.document.mfaVerified,
+    ...(tenant ? { tenant } : {}),
   };
 }
 

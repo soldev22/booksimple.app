@@ -125,7 +125,10 @@ const dashboardMetrics = [
 ];
 
 export default async function Home() {
-  if (!(await getViewer())) redirect("/login");
+  const viewer = await getViewer();
+  if (!viewer) redirect("/login");
+  if (!viewer.tenant) redirect("/account");
+  const { tenant } = viewer;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -145,10 +148,10 @@ export default async function Home() {
 
         <div className="sidebar-footer">
           <div aria-hidden="true" className="workspace-avatar">
-            B
+            {tenant.businessName.charAt(0).toUpperCase()}
           </div>
           <div className="workspace-details">
-            <span className="workspace-name">Your workspace</span>
+            <span className="workspace-name">{tenant.businessName}</span>
             <span className="workspace-type">Business account</span>
           </div>
           <span aria-hidden="true" className="workspace-menu">
@@ -192,12 +195,12 @@ export default async function Home() {
               <p className="eyebrow">OVERVIEW</p>
               <h1>Welcome to your workspace</h1>
               <p className="page-description">
-                A clear view of your business, all in one place.
+                A clear view of {tenant.businessName}, all in one place.
               </p>
             </div>
             <div className="date-label">
               <span aria-hidden="true" className="calendar-dot" />
-              Your business workspace
+              {tenant.businessName}
             </div>
           </div>
 

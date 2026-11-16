@@ -15,6 +15,12 @@ export default async function AccountPage() {
           ? `${user.membership.role === "company_admin" ? "Company administrator" : "Company user"}`
           : "Awaiting role assignment. Workspace access is not enabled."}
       </div>
+      {viewer.tenant && (
+        <section className="account-section">
+          <h2>Current business</h2>
+          <p>{viewer.tenant.businessName}</p>
+        </section>
+      )}
       {user.application && (
         <section className="account-section">
           <h2>Business application</h2>

@@ -6,6 +6,7 @@ import { accountPartition, encryptJson, sha256 } from "../src/server/auth-crypto
 import {
   AUTH_COOKIE_NAME,
   createSession,
+  getViewerForToken,
   resolveSessionToken,
   type UserDocument,
 } from "../src/server/auth";
@@ -30,6 +31,11 @@ import {
   runAuthAction,
 } from "../src/server/auth-service";
 import { createTotp } from "../src/server/auth-totp";
+import {
+  assertTenantAccess,
+  requireCompanyAdmin,
+  resolveTenantContext,
+} from "../src/server/tenant-context";
 
 const createdControlPartitions = new Set<string>();
 const createdSessions: { id: string; partitionKey: string }[] = [];
@@ -234,6 +240,7 @@ async function run() {
     assignedTarget.partitionKey,
   );
   assert.notEqual(unchangedMembership?.document.membership?.tenantId, tenantId);
+  assert.equal(await resolveTenantContext(assignedTarget), null);
 
   const preAssignmentSession = await createSession(firstUser, false);
   createdSessions.push({
@@ -259,6 +266,22 @@ async function run() {
   assert.equal(assignedCompanyAdmin?.document.membership?.role, "company_admin");
   assert.equal(assignedCompanyAdmin?.document.platformAdmin, false);
   assert.ok(assignedCompanyAdmin);
+  const tenantContext = await resolveTenantContext(
+    assignedCompanyAdmin.document,
+  );
+  assert.deepEqual(tenantContext, {
+    tenantId,
+    businessName: "Synthetic test business",
+    username: "unique-user",
+    role: "company_admin",
+  });
+  assert.ok(tenantContext);
+  requireCompanyAdmin(tenantContext);
+  assertTenantAccess(tenantContext, tenantId);
+  assert.throws(
+    () => assertTenantAccess(tenantContext, randomUUID()),
+    { status: 403 },
+  );
   const companyAdminSession = await createSession(
     assignedCompanyAdmin.document,
     false,
@@ -267,6 +290,10 @@ async function run() {
     id: companyAdminSession.document.id,
     partitionKey: firstUser.partitionKey,
   });
+  const companyAdminViewer = await getViewerForToken(
+    companyAdminSession.token,
+  );
+  assert.deepEqual(companyAdminViewer?.tenant, tenantContext);
   const companyAdminRequest = new Request(
     "https://bookingsimple.invalid/api/admin",
     {
@@ -560,7 +587,7 @@ async function run() {
   );
 
   console.log(
-    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, tenant transfer denial, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
+    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, active tenant-context resolution, cross-tenant denial, tenant transfer denial, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
   );
 }
 

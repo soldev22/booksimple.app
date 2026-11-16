@@ -30,8 +30,8 @@ test("application pages require a valid session while sign-in and recovery remai
         password: "Synthetic-only-Password-17!",
       });
       const dashboard = await get("/", login.sessionToken);
-      assert.equal(dashboard.status, 200);
-      assert.match(await dashboard.text(), /Welcome to your workspace/);
+      assert.equal(dashboard.status, 307);
+      assert.equal(new URL(dashboard.headers.get("location"), baseUrl).pathname, "/account");
       assert.equal((await get("/account", login.sessionToken)).status, 200);
       const admin = await get("/admin", login.sessionToken);
       assert.equal(admin.status, 307);

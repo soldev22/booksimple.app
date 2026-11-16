@@ -225,6 +225,18 @@ A user belonging to one business must never be able to access another business's
 
 Authorization must be enforced server-side.
 
+The authenticated viewer includes a current tenant context only when the
+server-stored membership points to an active business. The context contains
+the business GUID, business name, internal company username and company role.
+It is resolved server-side from the session and membership; browser-supplied
+tenant identifiers are never accepted as authorization.
+
+Reusable guards require an active tenant, enforce company-administrator
+operations and reject identifiers for any other business. The persisted
+`company_user` role is the current staff-level role. Platform administration
+remains a separate audited role and does not implicitly grant a business
+membership.
+
 ---
 
 ## Product Documentation

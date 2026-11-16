@@ -357,6 +357,27 @@ A user can have at most one business membership. Pending applicants and
 platform administrators do not require a business membership. Platform access
 is a separate role, not a tenant membership.
 
+## Implemented Tenant Context
+
+The server derives the current tenant from the authenticated user document;
+it never accepts a browser-supplied tenant identifier as proof of access. A
+membership resolves to a tenant context only when a point read using the stored
+business GUID returns the matching active Business document. Missing, disabled,
+rejected or otherwise invalid business records do not produce a tenant context.
+
+The viewer exposes the active business GUID and name, internal company username
+and company role. Reusable guards require an authenticated tenant, require the
+company-administrator role where appropriate, and reject any requested business
+GUID that differs from the resolved context. The persisted `company_user` role
+is the current staff-level role; it is intentionally retained to preserve the
+existing document contract.
+
+Platform administration remains separate from tenant context. A platform
+administrator without a business membership has no implicit tenant access, and
+a company role never grants platform access. The business dashboard requires
+an active tenant context; authenticated users without one remain on their
+account and application-status pages.
+
 ## Agreed Foundation Data
 
 The following is the broader logical foundation. The implemented registration

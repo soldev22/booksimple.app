@@ -373,6 +373,22 @@ tenant membership alone must not grant platform-wide access.
 - cross-tenant access tests pass
 - tenant context is reusable by future modules
 
+## Current Status
+
+COMPLETE for the approved Stage 4 scope.
+
+The server now resolves an active business context from the authenticated
+user's stored membership and a matching Business point read. Reusable guards
+require tenant membership, distinguish company administrators from the
+persisted `company_user` staff-level role, and reject a different business GUID.
+Platform administration remains separately authorized and audited.
+
+Automated policy tests, persisted synthetic Cosmos checks and a rendered-page
+integration test prove that unassigned users cannot enter a workspace, Business
+A's context accepts Business A and rejects another business identifier, and
+tenant membership does not grant platform access. The full test suite, lint,
+typecheck and production build pass.
+
 STOP after completion.
 
 ---

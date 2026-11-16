@@ -1,3 +1,12 @@
+export type CompanyRole = "company_admin" | "company_user";
+
+export type TenantContext = {
+  tenantId: string;
+  businessName: string;
+  username: string;
+  role: CompanyRole;
+};
+
 export type UserView = {
   id: string;
   email: string;
@@ -9,7 +18,7 @@ export type UserView = {
   membership?: {
     tenantId: string;
     username: string;
-    role: "company_admin" | "company_user";
+    role: CompanyRole;
   };
   application?: {
     businessName: string;
@@ -20,6 +29,7 @@ export type UserView = {
 export type Viewer = {
   user: UserView;
   mfaVerified: boolean;
+  tenant?: TenantContext;
 };
 
 export type BusinessView = {
