@@ -29,6 +29,44 @@ test("registration persists without privileges, verification is one-time, and lo
     }
   });
 
+test("login with the correct password prompts for email verification",
+  { skip: !integrationEnabled }, async () => {
+    const fixture = authFixture();
+    try {
+      const registration = await fixture.action("register", {
+        name: "Synthetic Test User",
+        email: fixture.email,
+        password: "Synthetic-only-Password-17!",
+      });
+      assert.equal(registration.status, 201);
+
+      await assert.rejects(
+        fixture.action("login", {
+          email: fixture.email,
+          password: "wrong",
+        }),
+        { status: 401, message: "The email or password is incorrect." },
+      );
+      await assert.rejects(
+        fixture.action("login", {
+          email: fixture.email,
+          password: "Synthetic-only-Password-17!",
+        }),
+        { status: 403, message: "Please verify your email to proceed." },
+      );
+
+      await fixture.action("verify", { token: fixture.emailToken() });
+      const login = await fixture.action("login", {
+        email: fixture.email,
+        password: "Synthetic-only-Password-17!",
+      });
+      assert.equal(login.status, 200);
+      assert.ok(await resolveSessionToken(login.sessionToken));
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
 test("previous MFA enrollment does not request an authenticator at login",
   { skip: !integrationEnabled }, async () => {
     const fixture = authFixture();

@@ -489,9 +489,14 @@ async function login(email: string, password: string): Promise<AuthActionResult>
   if (
     !matches ||
     !userResult ||
-    userResult.document.status !== "active" ||
-    !userResult.document.emailVerified
+    userResult.document.status === "disabled"
   ) {
+    throw authError(401, "The email or password is incorrect.");
+  }
+  if (!userResult.document.emailVerified) {
+    throw authError(403, "Please verify your email to proceed.");
+  }
+  if (userResult.document.status !== "active") {
     throw authError(401, "The email or password is incorrect.");
   }
   const user = userResult.document;

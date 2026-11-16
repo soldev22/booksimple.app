@@ -135,6 +135,12 @@ and must be reassessed before using real data or deploying to production.
    explicitly; a created account can request a new verification email at
    `/verify`. Pending/failed email outbox entries can also be retried by the
    operator script.
+   For rejected Postmark requests, server logs include `providerStatus` and,
+   when available, the numeric `providerCode` from Postmark's response.
+   Use that code with Postmark's API error reference to diagnose sender
+   verification, account restrictions or message stream errors. Raw provider
+   messages and email contents are not logged. Restart the development server
+   after changing environment settings, then request a resend at `/verify`.
 4. The `booksimple` database with `auth-control`, `auth-sessions` and
    `auth-throttles` has been provisioned in the approved Azure account.
    To provision or verify another approved target, set

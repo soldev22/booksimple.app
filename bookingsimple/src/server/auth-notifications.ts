@@ -87,7 +87,7 @@ class ProviderError extends Error {
   }
 }
 
-async function sendWithPostmark(payload: NotificationPayload): Promise<void> {
+export async function sendWithPostmark(payload: NotificationPayload): Promise<void> {
   const token = process.env.POSTMARK_SERVER_TOKEN?.trim();
   const from = process.env.POSTMARK_FROM_EMAIL?.trim();
   if (!token || !from) {
@@ -111,21 +111,16 @@ async function sendWithPostmark(payload: NotificationPayload): Promise<void> {
     }),
     signal: AbortSignal.timeout(8_000),
   });
-  if (!response.ok) {
-    throw new ProviderError(response.status);
-  }
   const result: unknown = await response.json().catch(() => null);
-  if (
-    !result ||
-    typeof result !== "object" ||
-    (result as { ErrorCode?: unknown }).ErrorCode !== 0
-  ) {
-    const providerCode =
-      result &&
-      typeof result === "object" &&
-      typeof (result as { ErrorCode?: unknown }).ErrorCode === "number"
-        ? (result as { ErrorCode: number }).ErrorCode
-        : undefined;
+  const providerCode =
+    result &&
+    typeof result === "object" &&
+    "ErrorCode" in result &&
+    typeof result.ErrorCode === "number" &&
+    Number.isInteger(result.ErrorCode)
+      ? result.ErrorCode
+      : undefined;
+  if (!response.ok || providerCode !== 0) {
     throw new ProviderError(response.status, providerCode);
   }
 }
