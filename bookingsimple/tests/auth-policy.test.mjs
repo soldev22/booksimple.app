@@ -61,8 +61,35 @@ test("platform access requires the platform role but not MFA", () => {
       user: { platformAdmin: false, mfaEnabled: true },
       mfaVerified: true,
     },
+    {
+      user: {
+        platformAdmin: false,
+        mfaEnabled: false,
+        membership: {
+          tenantId: "tenant-a",
+          username: "company-admin",
+          role: "company_admin",
+        },
+      },
+      mfaVerified: false,
+    },
+    {
+      user: {
+        platformAdmin: false,
+        mfaEnabled: false,
+        membership: {
+          tenantId: "tenant-a",
+          username: "company-user",
+          role: "company_user",
+        },
+      },
+      mfaVerified: false,
+    },
   ]) {
-    assert.throws(() => requirePlatformAccess(viewer));
+    assert.throws(
+      () => requirePlatformAccess(viewer),
+      viewer ? { status: 403 } : { status: 401 },
+    );
   }
   assert.doesNotThrow(() =>
     requirePlatformAccess({

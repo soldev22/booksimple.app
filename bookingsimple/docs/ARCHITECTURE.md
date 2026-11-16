@@ -306,9 +306,10 @@ Additional configuration should be added deliberately rather than turning the Bu
 The approved direction is a custom application-managed email and password
 system. All users use the same registration and sign-in system. Email
 addresses are unique across the platform and cannot initially be changed.
-Company usernames are distinct from
-email addresses and unique only within their business; a platform
-administrator's display name is optional. Never store plaintext passwords. Use a
+Registered names identify users in the administration UI. Internal company
+usernames remain distinct from email addresses and unique only within their
+business, but are not displayed as the user's name; a platform administrator's
+display name is optional. Never store plaintext passwords. Use a
 well-reviewed password-hashing implementation, secure password recovery and
 login-abuse protections.
 

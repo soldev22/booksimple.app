@@ -317,6 +317,20 @@ Do not confuse authentication with tenant authorization.
 - secrets remain server-side
 - build and lint pass
 
+## Current Status
+
+COMPLETE for the approved local Stage 3 scope.
+
+The automated test suite, lint, typecheck, production build and synthetic
+Cosmos authorization checks pass. Persisted authorization coverage verifies
+that assigning a company-administrator membership invalidates the previous
+session but does not grant platform-administrator access. Local registration,
+sign-in, sign-out and company-role behavior have also been exercised manually.
+
+Real Postmark delivery and deployed Vercel OIDC access remain unverified and
+must be validated separately before accepting real data or treating the
+deployment as production-ready.
+
 STOP after completion.
 
 ---

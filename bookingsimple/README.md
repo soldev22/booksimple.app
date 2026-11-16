@@ -195,8 +195,9 @@ node --env-file=.env.local --conditions=react-server --import tsx scripts\check-
 
 The lifecycle tests create UUID-scoped synthetic accounts and remove their
 account, business, session and exact throttle records during cleanup.
-The security check covers password-only platform role access, one-time bootstrap
-locking, membership races and session invalidation with synthetic data.
+The security check covers password-only platform role access, denial of
+platform operations to company administrators, one-time bootstrap locking,
+membership races and session invalidation with synthetic data.
 The retained internal MFA tests exercise dormant implementation details, not
 available user flows; MFA HTTP endpoints are disabled.
 Neither command creates a real administrator or sends email.

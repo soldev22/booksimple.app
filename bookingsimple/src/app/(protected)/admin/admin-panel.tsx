@@ -91,23 +91,30 @@ function AssignmentForm({
   assign: (body: Record<string, unknown>) => Promise<void>;
 }) {
   const available = businesses.filter((business) => business.status === "active");
+  const membershipUsername =
+    user.membership?.username ?? `owner_${user.id.replaceAll("-", "").slice(0, 10)}`;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    await assign({ ...values, userId: user.id });
+    await assign({
+      ...values,
+      userId: user.id,
+      username: membershipUsername,
+    });
   }
   return (
     <form className="assignment-form" onSubmit={submit}>
+      <label className="account-field">
+        <span>Registered name</span>
+        <input value={user.name} readOnly />
+      </label>
       <label className="account-field">
         <span>Business</span>
         <select name="tenantId" required defaultValue={user.membership?.tenantId ?? ""} disabled={busy}>
           <option value="" disabled>Select a business</option>
           {available.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
         </select>
-      </label>
-      <label className="account-field">
-        <span>Company username</span>
-        <input name="username" required maxLength={50} defaultValue={user.membership?.username ?? ""} disabled={busy} />
       </label>
       <label className="account-field">
         <span>Company role</span>

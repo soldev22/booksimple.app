@@ -235,15 +235,55 @@ async function run() {
   );
   assert.notEqual(unchangedMembership?.document.membership?.tenantId, tenantId);
 
+  const preAssignmentSession = await createSession(firstUser, false);
+  createdSessions.push({
+    id: preAssignmentSession.document.id,
+    partitionKey: firstUser.partitionKey,
+  });
   await runAdminAction(
     "assign",
     {
       userId: firstUser.userId,
       tenantId,
       username: "unique-user",
-      role: "company_user",
+      role: "company_admin",
     },
     request,
+  );
+  assert.equal(await resolveSessionToken(preAssignmentSession.token), null);
+  const assignedCompanyAdmin = await readDocument<UserDocument>(
+    control,
+    "user",
+    firstUser.partitionKey,
+  );
+  assert.equal(assignedCompanyAdmin?.document.membership?.role, "company_admin");
+  assert.equal(assignedCompanyAdmin?.document.platformAdmin, false);
+  assert.ok(assignedCompanyAdmin);
+  const companyAdminSession = await createSession(
+    assignedCompanyAdmin.document,
+    false,
+  );
+  createdSessions.push({
+    id: companyAdminSession.document.id,
+    partitionKey: firstUser.partitionKey,
+  });
+  const companyAdminRequest = new Request(
+    "https://bookingsimple.invalid/api/admin",
+    {
+      headers: {
+        cookie: `${AUTH_COOKIE_NAME}=${companyAdminSession.token}`,
+      },
+    },
+  );
+  await expectStatus(() => listAdminData(companyAdminRequest), 403);
+  await expectStatus(
+    () =>
+      runAdminAction(
+        "platform-role",
+        { userId: secondUser.userId, enabled: true },
+        companyAdminRequest,
+      ),
+    403,
   );
   const membershipAudits = await queryAllPages<{
     actorUserId: string;

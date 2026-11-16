@@ -409,9 +409,10 @@ product decision. This increases the risk of account takeover, particularly
 for platform administrators with access across businesses.
 
 All users register and sign in through the same account system. Email addresses
-are unique across the platform and cannot initially be changed; company
-usernames are unique only within their company. A user can belong to at most
-one business. Selected users can be
+are unique across the platform and cannot initially be changed. The registered
+name is shown when managing a user; internal company usernames are unique only
+within their company and are not presented as the user's display name. A user
+can belong to at most one business. Selected users can be
 granted a separate platform-administrator role with access across businesses.
 A platform
 administrator's display name is optional. Company administrators manage their
