@@ -1,18 +1,10 @@
 import "server-only";
 
 import { AuthPolicyError } from "./auth-policy";
-import { controlContainer, readDocument, type AuthDocument } from "./auth-storage";
+import { controlContainer, readDocument } from "./auth-storage";
 import type { UserDocument } from "./auth";
 import type { TenantContext, Viewer } from "./auth-types";
-
-type BusinessDocument = AuthDocument & {
-  type: "business";
-  name: string;
-  status: "pending" | "active" | "rejected" | "disabled";
-  memberCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
+import type { BusinessDocument } from "./business-types";
 
 export async function resolveTenantContext(
   user: UserDocument,

@@ -49,6 +49,11 @@ import {
   verificationEmail,
 } from "./auth-notifications";
 import { acceptedTotpStep, createTotp } from "./auth-totp";
+import {
+  DEFAULT_BUSINESS_CURRENCY,
+  DEFAULT_BUSINESS_TIMEZONE,
+  type BusinessDocument,
+} from "./business-types";
 import type { BusinessView, UserView, Viewer } from "./auth-types";
 import type { AuthAction } from "./auth-validation";
 
@@ -132,15 +137,6 @@ export type AuthActionResult = {
   };
   sessionToken?: string;
   clearCookie?: boolean;
-};
-
-type BusinessDocument = AuthDocument & {
-  type: "business";
-  name: string;
-  status: "pending" | "active" | "rejected" | "disabled";
-  memberCount: number;
-  createdAt: string;
-  updatedAt: string;
 };
 
 type TokenDocument = AuthDocument & {
@@ -356,6 +352,8 @@ async function createRegistration(
       name: businessName,
       status: "pending",
       memberCount: 0,
+      timezone: DEFAULT_BUSINESS_TIMEZONE,
+      currency: DEFAULT_BUSINESS_CURRENCY,
       createdAt: now,
       updatedAt: now,
     };
@@ -1390,6 +1388,112 @@ async function setMembership(
       await syncMembershipReservation(tenantId, userId, normalized, role);
     },
     tenantId,
+  );
+}
+
+export async function acceptCompanyUserMembership(
+  current: Versioned<UserDocument>,
+  tenantId: string,
+): Promise<void> {
+  const existing = current.document.membership;
+  if (existing) {
+    if (existing.tenantId === tenantId && existing.role === "company_user") {
+      return;
+    }
+    throw authError(409, "This account already has a business membership.");
+  }
+  const username = `user_${current.document.userId.replace(/-/g, "").slice(0, 10)}`;
+  const reservation = await reserveBusinessMembership(
+    tenantId,
+    current.document.userId,
+    username,
+    "company_user",
+  );
+  const latest = await readDocument<UserDocument>(
+    controlContainer(),
+    ACCOUNT_MEMBERSHIP_ID,
+    current.document.partitionKey,
+  );
+  if (
+    !latest ||
+    latest.document.status !== "active" ||
+    !latest.document.emailVerified
+  ) {
+    await releaseBusinessMembership(
+      tenantId,
+      username,
+      current.document.userId,
+      reservation.operationId,
+      true,
+    );
+    throw authError(409, "The account is no longer available.");
+  }
+  if (latest.document.membership) {
+    if (
+      latest.document.membership.tenantId === tenantId &&
+      latest.document.membership.role === "company_user"
+    ) {
+      await syncMembershipReservation(
+        tenantId,
+        current.document.userId,
+        latest.document.membership.username,
+        "company_user",
+      );
+      return;
+    }
+    await releaseBusinessMembership(
+      tenantId,
+      username,
+      current.document.userId,
+      reservation.operationId,
+      true,
+    );
+    throw authError(409, "This account already has a business membership.");
+  }
+  const updated: UserDocument = {
+    ...latest.document,
+    membership: {
+      tenantId,
+      username,
+      role: "company_user",
+    },
+    authVersion: latest.document.authVersion + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await replaceUserWithAdminAudit(
+      latest,
+      updated,
+      latest.document,
+      "business-invitation-accepted",
+      tenantId,
+    );
+  } catch (error) {
+    const saved = await readDocument<UserDocument>(
+      controlContainer(),
+      ACCOUNT_MEMBERSHIP_ID,
+      current.document.partitionKey,
+    );
+    if (
+      !saved?.document.membership ||
+      saved.document.membership.tenantId !== tenantId ||
+      saved.document.membership.role !== "company_user"
+    ) {
+      await releaseBusinessMembership(
+        tenantId,
+        username,
+        current.document.userId,
+        reservation.operationId,
+        true,
+      );
+    }
+    throw error;
+  }
+  await syncMembershipReservation(
+    tenantId,
+    current.document.userId,
+    username,
+    "company_user",
   );
 }
 

@@ -19,6 +19,7 @@ export default async function AccountPage() {
         <section className="account-section">
           <h2>Current business</h2>
           <p>{viewer.tenant.businessName}</p>
+          <p className="account-links"><Link href="/settings">Open business settings</Link></p>
         </section>
       )}
       {user.application && (

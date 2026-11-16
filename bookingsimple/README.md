@@ -204,6 +204,33 @@ Neither command creates a real administrator or sends email.
 
 ---
 
+## Business Setup
+
+Approved businesses have a tenant-scoped settings page at `/settings`.
+Company administrators can update the business name, IANA timezone and
+three-letter operating currency. Company users can view the same settings but
+cannot update them. The APIs derive the business from the authenticated
+membership and do not accept a tenant ID from the browser.
+
+Company administrators can invite staff-level company users by email. The
+invitation is valid for seven days and can only be accepted by an authenticated,
+verified account with the invited email address. Acceptance grants only the
+persisted `company_user` role, invalidates the old session and requires the user
+to sign in again. Company-administrator and platform roles cannot be granted
+through invitations.
+
+Existing Business documents must have explicit timezone and currency settings.
+The Stage 5 migration is idempotent and can be rerun:
+
+```powershell
+npm run migrate:business-settings
+```
+
+The migration uses `.env.local`, adds `Europe/London` and `GBP` only when those
+fields are missing, and does not overwrite configured values.
+
+---
+
 ## Multi-Tenancy
 
 The application supports multiple independent businesses.

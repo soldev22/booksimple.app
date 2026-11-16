@@ -238,7 +238,7 @@ documents expire only when they specify a TTL).
 
 | Container | Partition derivation | Records and retention |
 | --- | --- | --- |
-| `auth-control` | `account_` plus SHA-256 of trimmed, lowercase email; business GUID for business records | User/security state, hashed verification/reset tokens, encrypted email outbox, business state and username reservations, one-year admin audits, durable bootstrap lock |
+| `auth-control` | `account_` plus SHA-256 of trimmed, lowercase email; business GUID for business records | User/security state, hashed verification/reset tokens, encrypted email outbox, business state and settings, username reservations, business invitations, one-year admin audits, durable bootstrap lock |
 | `auth-sessions` | Owning immutable account partition key | Hashed session verifiers; maximum seven-day lifetime, explicit revocation and account authorization version checks |
 | `auth-throttles` | Hash of rate-limit scope and protected account key | Expiring, ETag-protected counters; no in-memory-only abuse protection |
 
@@ -378,10 +378,48 @@ a company role never grants platform access. The business dashboard requires
 an active tenant context; authenticated users without one remain on their
 account and application-status pages.
 
+## Implemented Business Setup
+
+Business documents retain the business GUID as both ID and partition key and
+now include an explicit IANA timezone and three-letter operating currency.
+New registrations receive `Europe/London` and `GBP` defaults. The idempotent
+business-settings migration adds those fields to older documents only when
+missing; it does not overwrite configured values. Company administrators can
+update the business name, timezone and currency. Company users can read those
+settings but cannot update them.
+
+Business settings requests contain no tenant identifier. The server resolves
+the active tenant from the authenticated membership and uses a point read in
+that business partition. Runtime validation rejects unknown fields, invalid
+timezones and invalid currency codes.
+
+Company-user invitations are stored in the business partition. Their
+deterministic ID is derived from the normalized invitee email, allowing one
+current invitation per email and business without relying on a query-only
+uniqueness check. An invitation stores the normalized email, fixed
+`company_user` role, status, inviter user GUID, creation/update/expiry times and
+only a hash of its random secret. The acceptance link carries the business GUID,
+invitation ID and random secret; the identifiers route the point read but do not
+authorize acceptance.
+
+Invitation links expire after seven days and records have one-year retention.
+Postmark payloads are encrypted using the existing notification outbox. Only a
+verified authenticated account whose normalized email matches the invitation
+can accept. Acceptance reserves a unique internal company username, adds the
+membership, increments the account authorization version and invalidates older
+sessions. It can grant only `company_user`; company-administrator and platform
+roles remain separate privileged operations.
+
+Membership assignment and invitation status updates span account and business
+partitions and therefore are not globally atomic. If membership succeeds before
+the invitation status update, a retry after signing in recognizes the existing
+matching membership and completes the invitation safely. Conflicting or reused
+links fail closed.
+
 ## Agreed Foundation Data
 
 The following is the broader logical foundation. The implemented registration
-subset uses the container layout above; invitations and future domain records
+and business-setup subsets use the container layout above; future domain records
 remain deferred. Identifiers for businesses and tenant-owned
 activities are GUIDs; tenant-owned records retain the business ID. Persisted
 documents include a schema version. The registration contracts are implemented

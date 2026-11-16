@@ -1006,6 +1006,39 @@ a:focus-visible {
     margin: 20px 0;
   }
 
+  .business-details,
+  .invitation-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .business-details div,
+  .invitation-list article {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .business-details dt {
+    color: var(--ink-muted);
+    font-size: 14px;
+  }
+
+  .business-details dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .invitation-list article span {
+    text-transform: capitalize;
+  }
+
+  .invitation-list article small {
+    color: var(--ink-muted);
+  }
+
   .backup-codes {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

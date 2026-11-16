@@ -36,12 +36,19 @@ import {
   requireCompanyAdmin,
   resolveTenantContext,
 } from "../src/server/tenant-context";
+import {
+  acceptBusinessInvitation,
+  createBusinessInvitation,
+  getBusinessSetup,
+  updateBusinessSettings,
+} from "../src/server/business-service";
 
 const createdControlPartitions = new Set<string>();
 const createdSessions: { id: string; partitionKey: string }[] = [];
 const createdThrottleIds = new Set<string>();
 const runId = randomUUID();
 const emailSuffix = `${runId}@example.invalid`;
+let currentCheck = "initialization";
 
 function syntheticUser(
   email: string,
@@ -312,6 +319,150 @@ async function run() {
       ),
     403,
   );
+
+  currentCheck = "business-settings-read";
+  const initialBusinessSetup = await getBusinessSetup(companyAdminRequest);
+  assert.deepEqual(
+      {
+        name: initialBusinessSetup.business.name,
+        timezone: initialBusinessSetup.business.timezone,
+        currency: initialBusinessSetup.business.currency,
+        canManage: initialBusinessSetup.business.canManage,
+      },
+      {
+        name: "Synthetic test business",
+        timezone: "Europe/London",
+        currency: "GBP",
+        canManage: true,
+      },
+  );
+  currentCheck = "business-settings-update";
+  const updatedBusiness = await updateBusinessSettings(
+      companyAdminRequest,
+      {
+        name: "Updated synthetic business",
+        timezone: "America/New_York",
+        currency: "USD",
+      },
+  );
+  assert.equal(updatedBusiness.name, "Updated synthetic business");
+  assert.equal(updatedBusiness.timezone, "America/New_York");
+  assert.equal(updatedBusiness.currency, "USD");
+
+  currentCheck = "business-invitation-create";
+  const invitationMessages: {
+      TextBody: string;
+  }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+      if (String(url) !== "https://api.postmarkapp.com/email") {
+        return originalFetch(url, options);
+      }
+      invitationMessages.push(JSON.parse(String(options?.body)));
+      return Response.json({ ErrorCode: 0 });
+  };
+  try {
+      await createBusinessInvitation(companyAdminRequest, {
+        email: secondUser.email,
+      });
+  } finally {
+      globalThis.fetch = originalFetch;
+  }
+  const invitationLink = invitationMessages[0]?.TextBody.match(
+      /https?:\/\/\S+/,
+  )?.[0];
+  assert.ok(invitationLink);
+  const invitationToken = new URL(invitationLink).searchParams.get("token");
+  assert.ok(invitationToken);
+  const invitedSetup = await getBusinessSetup(companyAdminRequest);
+  assert.equal(invitedSetup.invitations.length, 1);
+  assert.equal(invitedSetup.invitations[0].email, secondUser.email);
+  assert.equal(invitedSetup.invitations[0].status, "pending");
+
+  currentCheck = "business-invitation-wrong-account";
+  assert.ok(noMfaRole);
+  const wrongAccountSession = await createSession(
+    noMfaRole.document,
+    false,
+  );
+  createdSessions.push({
+      id: wrongAccountSession.document.id,
+      partitionKey: noMfaTarget.partitionKey,
+  });
+  const wrongAccountRequest = new Request(
+      "https://bookingsimple.invalid/api/business/invitations/accept",
+      {
+        headers: {
+          cookie: `${AUTH_COOKIE_NAME}=${wrongAccountSession.token}`,
+        },
+      },
+  );
+  try {
+      await acceptBusinessInvitation(wrongAccountRequest, invitationToken);
+      assert.fail("The wrong account accepted a business invitation.");
+  } catch (error) {
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? Number(error.status)
+          : error && typeof error === "object" && "code" in error
+            ? Number(error.code)
+            : 0;
+      currentCheck = `business-invitation-wrong-account-status-${status}`;
+      assert.equal(status, 403);
+  }
+
+  currentCheck = "business-invitation-accept";
+  const invitedSession = await createSession(secondUser, false);
+  createdSessions.push({
+      id: invitedSession.document.id,
+      partitionKey: secondUser.partitionKey,
+  });
+  const invitedRequest = new Request(
+      "https://bookingsimple.invalid/api/business/invitations/accept",
+      {
+        headers: {
+          cookie: `${AUTH_COOKIE_NAME}=${invitedSession.token}`,
+        },
+      },
+  );
+  await acceptBusinessInvitation(invitedRequest, invitationToken);
+  assert.equal(await resolveSessionToken(invitedSession.token), null);
+  const invitedUser = await readDocument<UserDocument>(
+      control,
+      "user",
+      secondUser.partitionKey,
+  );
+  assert.equal(invitedUser?.document.membership?.tenantId, tenantId);
+  assert.equal(invitedUser?.document.membership?.role, "company_user");
+  assert.ok(invitedUser);
+  const staffSession = await createSession(invitedUser.document, false);
+  createdSessions.push({
+      id: staffSession.document.id,
+      partitionKey: secondUser.partitionKey,
+  });
+  const staffRequest = new Request(
+      "https://bookingsimple.invalid/api/business",
+      {
+        headers: {
+          cookie: `${AUTH_COOKIE_NAME}=${staffSession.token}`,
+        },
+      },
+  );
+  const staffSetup = await getBusinessSetup(staffRequest);
+  assert.equal(staffSetup.business.canManage, false);
+  assert.equal(staffSetup.business.name, "Updated synthetic business");
+  assert.deepEqual(staffSetup.invitations, []);
+  await expectStatus(
+      () =>
+        updateBusinessSettings(staffRequest, {
+          name: "Forbidden update",
+          timezone: "Europe/London",
+          currency: "GBP",
+        }),
+      403,
+  );
+
+  currentCheck = "remaining-auth-checks";
   const membershipAudits = await queryAllPages<{
     actorUserId: string;
     action: string;
@@ -587,7 +738,7 @@ async function run() {
   );
 
   console.log(
-    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, active tenant-context resolution, cross-tenant denial, tenant transfer denial, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
+    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, active tenant-context resolution, cross-tenant denial, tenant transfer denial, business settings authorization, invitation acceptance, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
   );
 }
 
@@ -639,7 +790,7 @@ async function cleanup() {
 run()
   .catch(() => {
     console.error(
-      "Synthetic Cosmos auth checks failed. No test emails, credentials, or personal data were printed.",
+      `Synthetic Cosmos auth checks failed during ${currentCheck}. No test emails, credentials, or personal data were printed.`,
     );
     process.exitCode = 1;
   })

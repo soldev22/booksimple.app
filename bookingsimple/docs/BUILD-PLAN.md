@@ -438,6 +438,29 @@ However, these must be explicit configuration values rather than permanent archi
 - validation exists
 - mobile layout works
 
+## Current Status
+
+COMPLETE for the approved Stage 5 scope.
+
+The business settings page and APIs allow both company roles to view the active
+business profile while only company administrators can update its name,
+timezone and currency. Requests derive the tenant exclusively from the
+authenticated membership and reject unknown fields, including browser-supplied
+tenant identifiers.
+
+Company administrators can send seven-day Postmark invitations for the
+staff-level `company_user` role. Invitees must register or sign in with the
+invited email and explicitly accept. Acceptance cannot grant company-
+administrator or platform access, invalidates the old session and is retry-safe
+across the account and business partitions.
+
+New Business documents receive explicit defaults, and the idempotent migration
+successfully updated the existing development Business document without
+overwriting configured values. Policy tests, live synthetic Cosmos workflows,
+rendered page/API integration tests, the full test suite, lint, typecheck and
+the production build pass. Real Postmark delivery remains environment-dependent
+and was stubbed during automated invitation verification.
+
 STOP after completion.
 
 ---

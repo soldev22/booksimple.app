@@ -149,6 +149,44 @@ export async function getViewerForToken(token: string): Promise<Viewer | null> {
   };
 }
 
+export async function resolveRequestSession(
+  request: Request,
+): Promise<AuthenticatedSession | null> {
+  const cookie = request.headers.get("cookie");
+  if (!cookie) {
+    return null;
+  }
+  for (const part of cookie.split(";")) {
+    const [name, ...valueParts] = part.trim().split("=");
+    if (name !== AUTH_COOKIE_NAME) {
+      continue;
+    }
+    try {
+      return resolveSessionToken(decodeURIComponent(valueParts.join("=")));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function getRequestViewer(request: Request): Promise<Viewer | null> {
+  const authenticated = await resolveRequestSession(request);
+  if (!authenticated) {
+    return null;
+  }
+  const user = toUserView(authenticated.user.document);
+  const tenant = await resolveTenantContext(authenticated.user.document);
+  if (user.membership && !tenant) {
+    delete user.membership;
+  }
+  return {
+    user,
+    mfaVerified: authenticated.session.document.mfaVerified,
+    ...(tenant ? { tenant } : {}),
+  };
+}
+
 export async function createSession(
   user: UserDocument,
   mfaVerified: boolean,

@@ -28,7 +28,8 @@ type NotificationDocument = AuthDocument & {
     | "email-verification"
     | "password-reset"
     | "application-approved"
-    | "application-rejected";
+    | "application-rejected"
+    | "business-invitation";
   status: "pending" | "sent" | "failed";
   encryptedPayload?: string;
   createdAt: string;
@@ -235,6 +236,21 @@ export function decisionEmail(
     subject,
     textBody: `Hello ${name},\n\n${message}`,
     htmlBody: `<p>Hello ${escapeHtml(name)},</p><p>${message}</p>`,
+  };
+}
+
+export function invitationEmail(
+  email: string,
+  businessName: string,
+  token: string,
+): NotificationPayload {
+  const link = `${applicationOrigin()}/invite?token=${encodeURIComponent(token)}`;
+  const safeBusinessName = escapeHtml(businessName);
+  return {
+    to: email,
+    subject: "You have been invited to BookSimple",
+    textBody: `You have been invited to join ${businessName} on BookSimple.\n\nReview and accept the invitation: ${link}\n\nSign in or register with this email address before accepting. This invitation expires in seven days.`,
+    htmlBody: `<p>You have been invited to join ${safeBusinessName} on BookSimple.</p><p><a href="${link}">Review and accept the invitation</a></p><p>Sign in or register with this email address before accepting. This invitation expires in seven days.</p>`,
   };
 }
 

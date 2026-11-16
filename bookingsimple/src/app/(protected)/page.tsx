@@ -14,6 +14,7 @@ type NavigationItem = {
   label: string;
   icon: IconName;
   active?: boolean;
+  href?: string;
 };
 
 const navigationItems: NavigationItem[] = [
@@ -22,7 +23,7 @@ const navigationItems: NavigationItem[] = [
   { label: "Customers", icon: "customers" },
   { label: "Bookings", icon: "bookings" },
   { label: "Services", icon: "services" },
-  { label: "Settings", icon: "settings" },
+  { label: "Settings", icon: "settings", href: "/settings" },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -90,11 +91,11 @@ function Navigation() {
       <ul className="navigation-list">
         {navigationItems.map((item) => (
           <li key={item.label}>
-            {item.active ? (
+            {item.active || item.href ? (
               <Link
-                aria-current="page"
-                className="navigation-link navigation-link-active"
-                href="/"
+                aria-current={item.active ? "page" : undefined}
+                className={`navigation-link${item.active ? " navigation-link-active" : ""}`}
+                href={item.href ?? "/"}
               >
                 <Icon name={item.icon} />
                 <span>{item.label}</span>
