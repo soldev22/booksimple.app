@@ -360,6 +360,12 @@ export function ConversationDetailPanel({
               >
                 View Customer
               </Link>
+              <Link
+                className="customer-action-link"
+                href={`/bookings?customerId=${conversation.customerId}&conversationId=${conversation.id}`}
+              >
+                Create Booking
+              </Link>
             </>
           ) : (
             <>

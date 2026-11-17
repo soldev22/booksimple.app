@@ -64,7 +64,7 @@ External messaging and payment providers are isolated behind provider adapters.
 
 The core application must not depend directly on provider-specific implementations.
 
-Registration and the implemented Customer, Service and Conversation domains
+Registration and the implemented Customer, Service, Conversation and Booking domains
 use the reviewed containers described in
 [ARCHITECTURE.md](docs/ARCHITECTURE.md); future business-domain containers still
 require separate design approval. The initial connectivity plan uses the public Cosmos DB endpoint with
@@ -147,9 +147,9 @@ and must be reassessed before using real data or deploying to production.
    messages and email contents are not logged. Restart the development server
    after changing environment settings, then request a resend at `/verify`.
 4. The `booksimple` database with `auth-control`, `auth-sessions`,
-   `auth-throttles`, `customers`, `services`, hierarchical `conversations` and
-   tenant-partitioned `channel-identities` containers has been provisioned in
-   the approved Azure account.
+   `auth-throttles`, `customers`, `services`, hierarchical `conversations`,
+   tenant-partitioned `channel-identities` and `bookings` containers has been
+   provisioned in the approved Azure account.
    To provision or verify another approved target, set
    `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` in `.env.local` or the
    process environment and run:

@@ -308,6 +308,14 @@ A booking may contain:
 
 The exact database model will be defined separately in the architecture.
 
+The implemented Booking foundation requires an active Customer and Service.
+The selected Service supplies a duration, price and currency snapshot, while
+the Business timezone is used to convert local input into UTC start and end
+instants. A resolved Conversation can originate a Booking and remains linked
+to it. Staff can view, filter, edit non-terminal Bookings, change explicit
+status and cancel without deleting history. Deposit, payment, availability,
+staff/resource assignment and location behavior remain future stages.
+
 ---
 
 # 11. Booking Status

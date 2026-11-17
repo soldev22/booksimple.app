@@ -1533,6 +1533,105 @@ a:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.booking-form-grid,
+.booking-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.booking-filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.booking-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #514100;
+  background: #fff3c4;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.booking-status-confirmed,
+.booking-status-completed {
+  color: #176747;
+  background: #e6f7ef;
+}
+
+.booking-status-cancelled,
+.booking-status-no_show {
+  color: #8b2331;
+  background: #fff0f2;
+}
+
+.booking-status-awaiting_deposit {
+  color: #704600;
+  background: #fff1cf;
+}
+
+.booking-detail-heading,
+.booking-status-actions,
+.booking-related-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booking-detail-heading h2,
+.booking-detail-heading p {
+  margin: 0;
+}
+
+.booking-detail-heading p {
+  margin-top: 8px;
+  color: var(--ink-muted);
+}
+
+.booking-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.booking-summary div {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.booking-summary dt {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.booking-summary dd {
+  margin: 7px 0 0;
+  font-weight: 650;
+}
+
+.booking-related-links {
+  justify-content: flex-start;
+}
+
+.booking-status-actions {
+  justify-content: flex-start;
+}
+
+.booking-status-actions .account-field {
+  width: min(100%, 320px);
+}
+
 @media (max-width: 760px) {
   .customer-form-grid,
   .customer-search,
@@ -1540,7 +1639,10 @@ a:focus-visible {
   .service-search,
   .conversation-create-form,
   .conversation-search,
-  .conversation-detail-layout {
+  .conversation-detail-layout,
+  .booking-form-grid,
+  .booking-filters,
+  .booking-summary {
     grid-template-columns: 1fr;
   }
 

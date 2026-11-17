@@ -202,8 +202,8 @@ platform-administrator access must also be verified and audited. Use
 parameterized queries; never trust a tenant identifier or partition key
 supplied by the browser as authorization.
 
-The registration and Customer container layouts are selected below; keys for
-future communications and booking containers are **not yet selected**. A user
+The implemented domain container layouts are selected below; keys for future
+payment and reminder containers are **not yet selected**. A user
 can belong to at most one business, while platform identity, pending
 applications and platform-administrator access are not ordinary tenant-owned
 records. Their lookup and storage still require deliberate design.
@@ -233,9 +233,9 @@ estimates do not establish document sizes, audit-event volume or data growth.
 Database: `booksimple`. Authentication containers use the immutable
 `/partitionKey` path with Hash partitioning and `defaultTtl=-1` (TTL enabled;
 documents expire only when they specify a TTL). Customer, Service and channel
-identity containers use the immutable `/tenantId` path. Conversations use the
-hierarchical `/tenantId`, `/conversationId` key. Business-domain containers
-have no default TTL.
+identity and Booking containers use the immutable `/tenantId` path.
+Conversations use the hierarchical `/tenantId`, `/conversationId` key.
+Business-domain containers have no default TTL.
 
 | Container | Partition derivation | Records and retention |
 | --- | --- | --- |
@@ -246,6 +246,7 @@ have no default TTL.
 | `services` | Server-resolved active Business GUID in `/tenantId` | Active and inactive bookable Service records; durable with no automatic expiry |
 | `conversations` | Server-resolved Business GUID followed by Conversation GUID in a version 2 MultiHash key | Conversation summaries and separate Message documents; durable synthetic Stage 8 data with no automatic expiry |
 | `channel-identities` | Server-resolved active Business GUID in `/tenantId` | Deterministic provider-neutral contact identities and optional Customer links; durable with no automatic expiry |
+| `bookings` | Server-resolved active Business GUID in `/tenantId` | Durable Booking references, UTC instants, timezone and Service snapshots; no automatic expiry |
 
 The plain-language record inventory, sensitivity classifications and retention
 matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
@@ -349,6 +350,34 @@ active membership. Linking performs a same-tenant Customer point read and
 rejects archived, erased or cross-tenant records. Identity and Conversation
 updates use ETags, with explicit rollback if the second cross-container update
 fails. External channel adapters and real delivery are outside Stage 8.
+
+## Implemented Booking Foundation
+
+Bookings are stored in the dedicated `bookings` container partitioned by the
+server-resolved `/tenantId`. Lists, Customer filters and status filters remain
+inside that partition; detail access is a point read using Booking ID and the
+authenticated tenant. Customer, Service and optional Conversation references
+are independently point-read in the same tenant because Cosmos does not enforce
+foreign keys. Cross-tenant identifiers therefore return not found rather than
+granting access.
+
+New Bookings require an active Customer and Service and start as `PENDING`.
+When a Conversation origin is supplied, it must already resolve to the same
+Customer. Service duration, price in safe integer minor units and currency are
+snapshotted into the Booking. Later Service edits do not silently change an
+existing Booking; deliberately selecting a different Service refreshes those
+snapshots.
+
+The UI submits a local date and time interpreted in the Business timezone.
+The server rejects nonexistent or ambiguous daylight-saving clock-change
+times, then stores UTC `startAt` and derived `endAt` instants plus the IANA
+timezone snapshot used for display. Status is explicit: `PENDING`,
+`AWAITING_DEPOSIT`, `CONFIRMED`, `COMPLETED`, `CANCELLED` or `NO_SHOW`.
+Cancellation retains the record, and completed, cancelled and no-show details
+are immutable. ETags protect all edits and status replacements.
+
+Stage 9 deliberately excludes availability conflict detection, staff/resource
+assignment, locations, notes, recurrence, deposits and payments.
 
 Approval spans account and business partitions, so it is not globally atomic.
 For a new membership it reserves a generated member username, records the

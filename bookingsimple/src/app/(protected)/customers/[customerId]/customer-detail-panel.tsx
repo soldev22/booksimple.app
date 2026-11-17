@@ -226,6 +226,9 @@ export function CustomerDetailPanel({
       )}
 
       <p className="account-links">
+        <Link href={`/bookings?customerId=${customer.id}`}>
+          View Customer Bookings
+        </Link>
         <Link href="/customers">Back to customers</Link>
       </p>
     </>

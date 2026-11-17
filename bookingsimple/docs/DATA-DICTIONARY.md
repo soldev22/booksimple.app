@@ -31,6 +31,11 @@ human-readable. Raw secrets, passwords and session tokens are never stored.
 | `auth-control` | Account, company and authentication control records | Account hash for account records; business ID for company records | Users, businesses, invitations, hashed one-time tokens, notification delivery, reservations, audits and setup state |
 | `auth-sessions` | Active and revoked sign-in sessions | Account hash | Hashed session verifiers |
 | `auth-throttles` | Temporary abuse-prevention counters | Hashed rate-limit scope | Request counts for a short time window |
+| `customers` | Tenant-owned Customer records | `/tenantId` | Active, archived and anonymized Customers |
+| `services` | Tenant-owned bookable Service records | `/tenantId` | Active and inactive Services |
+| `conversations` | Tenant-owned Conversation threads | `/tenantId`, then `/conversationId` | Conversation summaries and separate Messages |
+| `channel-identities` | Tenant-owned communication contact identities | `/tenantId` | Normalized channel addresses and optional Customer links |
+| `bookings` | Tenant-owned Booking records | `/tenantId` | Customer and Service references, UTC times, timezone, snapshots and status |
 
 The authentication containers use `/partitionKey` because they contain several
 technical record types with different routing needs. Future business domains
@@ -84,10 +89,10 @@ Major business domains use dedicated containers rather than expanding
 | Domain | Planned container | Partition key | Status |
 | --- | --- | --- | --- |
 | Customers | `customers` | `/tenantId` | Implemented and provisioned |
-| Services | `services` | `/tenantId` | Approved Stage 7 design |
-| Conversations and messages | `conversations` | `/tenantId`, then `/conversationId` | Approved Stage 8 design |
-| Channel identities | `channel-identities` | `/tenantId` | Approved Stage 8 matching design |
-| Bookings | To be approved during Stage 9 | Expected tenant-oriented access with deliberate growth analysis | Not designed |
+| Services | `services` | `/tenantId` | Implemented and provisioned |
+| Conversations and messages | `conversations` | `/tenantId`, then `/conversationId` | Implemented and provisioned |
+| Channel identities | `channel-identities` | `/tenantId` | Implemented and provisioned |
+| Bookings | `bookings` | `/tenantId` | Implemented and provisioned |
 | Payments | To be approved during Stage 11 | Provider-safe internal records only | Not designed |
 
 ## Approved Customer Document
@@ -315,6 +320,65 @@ Channel identity decisions:
 | Match a channel identity | Point read using deterministic ID and server-resolved `tenantId` |
 | Resolve to a Customer | Tenant-scoped Customer point read and guarded cross-container updates |
 | Platform-wide message search | Not part of Stage 8 |
+
+## Approved Booking Document
+
+Stage 9 uses a dedicated `bookings` container partitioned by `/tenantId`.
+Bookings are durable business records and have no default TTL.
+
+```json
+{
+  "id": "booking-guid",
+  "tenantId": "business-guid",
+  "type": "booking",
+  "schemaVersion": 1,
+  "customerId": "customer-guid",
+  "serviceId": "service-guid",
+  "conversationId": "optional-conversation-guid",
+  "startAt": "2026-11-20T14:30:00.000Z",
+  "endAt": "2026-11-20T15:30:00.000Z",
+  "timeZone": "Europe/London",
+  "durationMinutes": 60,
+  "status": "PENDING",
+  "totalAmountMinor": 2550,
+  "currency": "GBP",
+  "createdAt": "2026-11-17T17:30:00.000Z",
+  "updatedAt": "2026-11-17T17:30:00.000Z"
+}
+```
+
+Booking decisions:
+
+- `tenantId` is both the ownership boundary and immutable Cosmos partition key.
+- `customerId` and `serviceId` are references validated by tenant-scoped point
+  reads. Cosmos does not enforce foreign keys.
+- `conversationId` is optional and records the tenant-owned Conversation from
+  which a Booking was created.
+- `startAt` and `endAt` are UTC ISO instants. `timeZone` preserves the tenant
+  timezone used to interpret and display the local booking time.
+- `durationMinutes`, `totalAmountMinor` and `currency` are copied from the
+  selected Service when booked. Later Service edits do not silently rewrite an
+  existing Booking's agreed duration or price.
+- New Bookings start as `PENDING`. Explicit statuses are `PENDING`,
+  `AWAITING_DEPOSIT`, `CONFIRMED`, `COMPLETED`, `CANCELLED` and `NO_SHOW`.
+- Cancellation changes status to `CANCELLED`; Bookings are not physically
+  deleted.
+- Deposit policy, payment state, assigned staff, resources, locations, notes,
+  recurrence and availability conflict detection are not part of Stage 9.
+- Booking records contain Customer and Conversation references but do not copy
+  Customer names, email addresses, phone numbers or message content.
+
+## Booking Access Patterns
+
+| Operation | Partition scope |
+| --- | --- |
+| List Bookings for the active company | One `tenantId` partition |
+| Filter by Customer or status | One `tenantId` partition |
+| Read a Booking by ID | Point read using Booking ID and server-resolved `tenantId` |
+| Create or update a Booking | One `tenantId` partition after same-tenant reference checks |
+| Cancel or change status | ETag-protected replacement in one `tenantId` partition |
+| Create from a Conversation | Full Conversation key plus same-tenant Customer validation |
+| Platform-wide Booking search | Not part of Stage 9 |
 
 ## Governance Rule
 

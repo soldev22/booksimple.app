@@ -11,6 +11,7 @@ import {
   CHANNEL_IDENTITY_CONTAINER_ID,
   CONVERSATION_CONTAINER_ID,
 } from "../src/server/conversation-types";
+import { BOOKING_CONTAINER_ID } from "../src/server/booking-types";
 
 const API_VERSION = "2024-05-15";
 const MANAGEMENT_ENDPOINT = "https://management.azure.com";
@@ -51,6 +52,11 @@ const containerDefinitions: ContainerDefinition[] = [
   },
   {
     id: CHANNEL_IDENTITY_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
+  },
+  {
+    id: BOOKING_CONTAINER_ID,
     partitionKeyPaths: ["/tenantId"],
     partitionKeyKind: "Hash",
   },

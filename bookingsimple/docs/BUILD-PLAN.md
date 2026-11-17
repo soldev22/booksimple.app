@@ -774,6 +774,8 @@ STOP after completion.
 
 # STAGE 9 — Booking Foundation
 
+Status: COMPLETE
+
 ## Objective
 
 Allow a conversation/customer to produce a booking.
@@ -831,6 +833,21 @@ Where appropriate, allow booking creation directly from a conversation.
 - tenant timezone is respected for display
 - tenant isolation verified
 - booking state is explicit
+
+Implemented with a dedicated `bookings` container partitioned by `/tenantId`.
+The server validates Customer, Service and optional Conversation ownership
+using the authenticated tenant. New Bookings start `PENDING`; Service duration,
+price and currency are snapshotted, while UTC start/end instants and the
+Business timezone preserve correct display.
+
+The Booking workspace supports creation, Customer and status filtering, detail
+viewing, non-terminal detail editing, explicit status changes and cancellation.
+Customer pages link to their Bookings, and resolved Conversations can open the
+creation form with Customer and Conversation context prefilled.
+
+Runtime validation covers timezone and DST behavior, tenant-isolated lists and
+point reads, cross-tenant URL/write denial, Conversation-Customer consistency,
+Service-derived totals, editing, cancellation and terminal edit protection.
 
 STOP after completion.
 

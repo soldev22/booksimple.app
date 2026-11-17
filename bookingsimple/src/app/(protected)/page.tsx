@@ -22,7 +22,7 @@ const navigationItems: NavigationItem[] = [
   { label: "Dashboard", icon: "dashboard", active: true },
   { label: "Inbox", icon: "inbox", href: "/inbox" },
   { label: "Customers", icon: "customers", href: "/customers" },
-  { label: "Bookings", icon: "bookings" },
+  { label: "Bookings", icon: "bookings", href: "/bookings" },
   { label: "Services", icon: "services", href: "/services" },
   { label: "Settings", icon: "settings", href: "/settings" },
 ];
