@@ -63,7 +63,7 @@ function parseSetup(value: unknown): BusinessSetupView {
 
 async function api(
   endpoint: string,
-  method: "GET" | "PATCH" | "POST",
+  method: "GET" | "PATCH" | "POST" | "DELETE",
   body?: Record<string, unknown>,
 ): Promise<unknown> {
   const response = await fetch(endpoint, {
@@ -91,7 +91,11 @@ async function api(
   return result;
 }
 
-export function BusinessSettingsPanel() {
+type BusinessSettingsPanelProps = {
+  section: "profile" | "invitations";
+};
+
+export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
   const [setup, setSetup] = useState<BusinessSetupView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -100,6 +104,33 @@ export function BusinessSettingsPanel() {
   async function load() {
     setError("");
     setSetup(parseSetup(await api("/api/business", "GET")));
+  }
+
+  async function deleteInvitation(email: string) {
+    if (
+      busy ||
+      !window.confirm(
+        `Delete the pending invitation for ${email}? The emailed link will stop working.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await api("/api/business/invitations", "DELETE", { email });
+      await load();
+      setMessage("Invitation deleted.");
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The invitation could not be deleted.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -188,38 +219,40 @@ export function BusinessSettingsPanel() {
       {error && <p className="account-error" role="alert">{error}</p>}
       {message && <p className="account-notice" role="status">{message}</p>}
 
-      <section className="account-section">
-        <h2>Business profile</h2>
-        {business.canManage ? (
-          <form className="account-form" onSubmit={updateSettings}>
-            <label className="account-field">
-              <span>Business name</span>
-              <input name="name" defaultValue={business.name} maxLength={120} required disabled={busy} />
-            </label>
-            <label className="account-field">
-              <span>Timezone</span>
-              <input name="timezone" defaultValue={business.timezone} maxLength={100} required disabled={busy} />
-              <small>Use an IANA timezone such as Europe/London.</small>
-            </label>
-            <label className="account-field">
-              <span>Currency</span>
-              <input name="currency" defaultValue={business.currency} minLength={3} maxLength={3} required disabled={busy} />
-              <small>Use a three-letter currency code such as GBP, EUR or USD.</small>
-            </label>
-            <button className="account-button" disabled={busy} type="submit">
-              {busy ? "Saving..." : "Save business settings"}
-            </button>
-          </form>
-        ) : (
-          <dl className="business-details">
-            <div><dt>Business name</dt><dd>{business.name}</dd></div>
-            <div><dt>Timezone</dt><dd>{business.timezone}</dd></div>
-            <div><dt>Currency</dt><dd>{business.currency}</dd></div>
-          </dl>
-        )}
-      </section>
+      {section === "profile" && (
+        <section className="account-section" id="business-profile">
+          <h2>Business profile</h2>
+          {business.canManage ? (
+            <form className="account-form" onSubmit={updateSettings}>
+              <label className="account-field">
+                <span>Business name</span>
+                <input name="name" defaultValue={business.name} maxLength={120} required disabled={busy} />
+              </label>
+              <label className="account-field">
+                <span>Timezone</span>
+                <input name="timezone" defaultValue={business.timezone} maxLength={100} required disabled={busy} />
+                <small>Use an IANA timezone such as Europe/London.</small>
+              </label>
+              <label className="account-field">
+                <span>Currency</span>
+                <input name="currency" defaultValue={business.currency} minLength={3} maxLength={3} required disabled={busy} />
+                <small>Use a three-letter currency code such as GBP, EUR or USD.</small>
+              </label>
+              <button className="account-button" disabled={busy} type="submit">
+                {busy ? "Saving..." : "Save business settings"}
+              </button>
+            </form>
+          ) : (
+            <dl className="business-details">
+              <div><dt>Business name</dt><dd>{business.name}</dd></div>
+              <div><dt>Timezone</dt><dd>{business.timezone}</dd></div>
+              <div><dt>Currency</dt><dd>{business.currency}</dd></div>
+            </dl>
+          )}
+        </section>
+      )}
 
-      {business.canManage && (
+      {section === "invitations" && business.canManage && (
         <section className="account-section">
           <h2>Invite a company user</h2>
           <p>Invited users receive staff-level access to this business. Platform and company-administrator access cannot be granted here.</p>
@@ -233,15 +266,42 @@ export function BusinessSettingsPanel() {
             </button>
           </form>
           {setup.invitations.length > 0 && (
-            <div className="invitation-list">
+            <div>
               <h3>Invitations</h3>
-              {setup.invitations.map((invitation) => (
-                <article key={`${invitation.email}-${invitation.createdAt}`}>
-                  <strong>{invitation.email}</strong>
-                  <span>{invitation.status}</span>
-                  <small>Expires {new Date(invitation.expiresAt).toLocaleDateString()}</small>
-                </article>
-              ))}
+              <div className="platform-user-table-wrap">
+                <table className="platform-user-table">
+                  <caption className="visually-hidden">Pending company invitations</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Email</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Sent</th>
+                      <th scope="col">Expires</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {setup.invitations.map((invitation) => (
+                      <tr key={`${invitation.email}-${invitation.createdAt}`}>
+                        <th scope="row">{invitation.email}</th>
+                        <td className="platform-table-status">{invitation.status}</td>
+                        <td>{new Date(invitation.createdAt).toLocaleDateString()}</td>
+                        <td>{new Date(invitation.expiresAt).toLocaleDateString()}</td>
+                        <td>
+                          <button
+                            className="account-button account-button-secondary"
+                            disabled={busy}
+                            onClick={() => void deleteInvitation(invitation.email)}
+                            type="button"
+                          >
+                            Delete invitation
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>

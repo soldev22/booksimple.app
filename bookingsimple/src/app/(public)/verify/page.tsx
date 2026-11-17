@@ -5,16 +5,26 @@ import { AccountForm } from "@/app/components/account-form";
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; invitation?: string }>;
 }) {
-  const { token } = await searchParams;
+  const { token, invitation } = await searchParams;
   return (
     <AccountShell title="Verify your email" description="Confirm your email address before signing in.">
       {token ? (
         <AccountForm
           endpoint="/api/auth/verify"
           label="Verify email"
-          fields={[{ name: "token", label: "Verification token", type: "hidden", defaultValue: token }]}
+          fields={[
+            { name: "token", label: "Verification token", type: "hidden", defaultValue: token },
+            ...(invitation
+              ? [{
+                  name: "invitationToken",
+                  label: "Invitation token",
+                  type: "hidden" as const,
+                  defaultValue: invitation,
+                }]
+              : []),
+          ]}
         />
       ) : (
         <>

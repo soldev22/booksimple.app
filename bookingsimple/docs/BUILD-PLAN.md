@@ -383,6 +383,22 @@ require tenant membership, distinguish company administrators from the
 persisted `company_user` staff-level role, and reject a different business GUID.
 Platform administration remains separately authorized and audited.
 
+New business approvals now assign only the least-privileged `company_user`
+membership. Company-administrator access is never automatic and requires a
+separate audited assignment by a platform administrator. Existing compatible
+memberships are preserved during approval retries.
+
+Platform administrators can also open a dedicated user directory that loads
+the existing paginated, audited platform data and groups all registered users
+by company. It displays company roles and the independent platform role,
+including explicit groups for platform-only and unassigned accounts. Both the
+page and data API enforce platform authorization server-side.
+
+Protected pages now share a prominent identity header and footer. The header
+uses the validated Viewer to show the registered user, all assigned roles and
+active company on one line, and provides session-revoking logout. Redundant
+approved-application and identity details are omitted from the account page.
+
 Automated policy tests, persisted synthetic Cosmos checks and a rendered-page
 integration test prove that unassigned users cannot enter a workspace, Business
 A's context accepts Business A and rejects another business identifier, and
@@ -449,10 +465,38 @@ authenticated membership and reject unknown fields, including browser-supplied
 tenant identifiers.
 
 Company administrators can send seven-day Postmark invitations for the
-staff-level `company_user` role. Invitees must register or sign in with the
-invited email and explicitly accept. Acceptance cannot grant company-
-administrator or platform access, invalidates the old session and is retry-safe
-across the account and business partitions.
+staff-level `company_user` role. Invitation links open the registration form
+with the invited email. New accounts join automatically after email
+verification, while existing accounts join automatically after signing in
+through the invitation flow. Acceptance cannot grant company-administrator or
+platform access, invalidates old sessions and is retry-safe across the account
+and business partitions.
+
+Company administrators can also delete pending invitations created for an
+incorrect email. Deletion invalidates the acceptance link and atomically removes
+correlated pending or failed notification records from the business partition.
+Accepted invitations and memberships are not removed by this action.
+
+The platform user directory supports audited pause, resume and anonymized
+deletion of other accounts. Existing sessions are invalidated, deleted
+memberships are released, and safeguards prevent self-lockout or removal of a
+business's last company administrator. Company administrators cannot change
+their own role.
+
+The platform Administration landing page is navigation-only. The shared Users
+page provides separate company records and business-application controls to
+platform administrators, including possible duplicate-name warnings during
+approval. Company administrators can open the same route but
+receive only their server-resolved active-company users; they can assign either
+company role and perform lifecycle actions only inside that tenant. Company
+users have no access. Platform roles and application decisions remain
+platform-only, and last-active-administrator safeguards also apply to role
+demotion.
+
+Rejected applicants can correct their business name and resubmit the same
+application. The Business Settings route is a settings hub linking to the
+Account business profile and tenant user administration. Pending invitations
+use the shared responsive table presentation.
 
 New Business documents receive explicit defaults, and the idempotent migration
 successfully updated the existing development Business document without
@@ -480,10 +524,26 @@ Initial Customer information:
 - name
 - email
 - phone
+- status
 - createdAt
 - updatedAt
 
 All customers must belong to a tenant.
+
+## Approved Data Decisions
+
+- Use a dedicated `customers` container partitioned by `/tenantId`; do not add
+  Customers to `auth-control` or a generic everything container.
+- Store a type discriminator and schema version on every Customer.
+- Allow duplicate customer email and phone values because contact details can
+  legitimately be shared. Warn within the active tenant instead of enforcing a
+  unique-key policy.
+- Archive customers during normal use. A separate permanent-erasure operation
+  anonymizes personal fields while preserving stable identifiers and timestamps
+  needed by future Booking and Conversation references.
+- Derive `tenantId` from authenticated membership for every operation.
+- Keep the approved field-level model, retention rationale and access patterns
+  synchronized with `docs/DATA-DICTIONARY.md`.
 
 ## UI
 
@@ -512,6 +572,21 @@ Business A cannot update a Business B customer.
 - tenant isolation tests pass
 - responsive UI works
 - build and lint pass
+
+## Completion
+
+Implemented with a dedicated `customers` container partitioned by `/tenantId`.
+Customer list and contact search use bounded continuation-token pages inside
+the authenticated tenant partition. Customer detail uses point reads with the
+Customer GUID and server-resolved tenant GUID. Create and edit return
+tenant-scoped duplicate email/phone warnings without blocking the write.
+
+All active company users can create, view, search, edit and archive Customers.
+Archived records retain their business identity. Permanent erasure is restricted
+to company administrators and removes name, search name, email and phone while
+retaining anonymous identifiers and timestamps. Runtime input validation,
+ETag-protected updates, cross-tenant API and URL denial, responsive tables and
+the workspace Customers link are implemented.
 
 STOP after completion.
 

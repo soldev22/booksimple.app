@@ -1,7 +1,9 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+
+const LOGIN_EMAIL_STORAGE_KEY = "booksimple-login-email";
 
 export type FormField = {
   name: string;
@@ -13,6 +15,7 @@ export type FormField = {
   maxLength?: number;
   defaultValue?: string;
   help?: string;
+  readOnly?: boolean;
 };
 
 export type ActionResult = {
@@ -72,18 +75,37 @@ export function AccountForm({
   label,
   children,
   onSuccess,
+  rememberEmailForLogin = false,
+  restoreEmailForLogin = false,
 }: {
   endpoint: string;
   fields: FormField[];
   label: string;
   children?: ReactNode;
   onSuccess?: (result: ActionResult) => void;
+  rememberEmailForLogin?: boolean;
+  restoreEmailForLogin?: boolean;
 }) {
   const router = useRouter();
   const formId = useId();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [restoredEmail, setRestoredEmail] = useState("");
+
+  useEffect(() => {
+    if (!restoreEmailForLogin) return;
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const email = window.sessionStorage.getItem(LOGIN_EMAIL_STORAGE_KEY);
+        if (email) setRestoredEmail(email);
+        window.sessionStorage.removeItem(LOGIN_EMAIL_STORAGE_KEY);
+      } catch (failure) {
+        console.warn("Unable to restore the registration email.", failure);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [restoreEmailForLogin]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +118,16 @@ export function AccountForm({
     try {
       const result = await submitAccountAction(endpoint, values);
       setMessage(result.message ?? "Request completed.");
+      if (rememberEmailForLogin && typeof values.email === "string") {
+        try {
+          window.sessionStorage.setItem(
+            LOGIN_EMAIL_STORAGE_KEY,
+            values.email,
+          );
+        } catch (failure) {
+          console.warn("Unable to preserve the registration email.", failure);
+        }
+      }
       if (onSuccess) {
         onSuccess(result);
       } else if (result.redirect) {
@@ -131,7 +163,17 @@ export function AccountForm({
             required={field.required ?? true}
             minLength={field.minLength}
             maxLength={field.maxLength}
-            defaultValue={field.defaultValue}
+            {...(
+              restoreEmailForLogin &&
+              field.name === "email" &&
+              field.defaultValue === undefined
+                ? {
+                    value: restoredEmail,
+                    onChange: (event) => setRestoredEmail(event.target.value),
+                  }
+                : { defaultValue: field.defaultValue }
+            )}
+            readOnly={field.readOnly}
             disabled={busy}
             aria-describedby={field.help ? `${formId}-${field.name}-help` : undefined}
           />

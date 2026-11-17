@@ -16,7 +16,7 @@ test("application pages require a valid session while sign-in and recovery remai
       for (const path of ["/login", "/register", "/verify", "/forgot-password", "/reset-password"]) {
         assert.equal((await get(path)).status, 200, `${path} should be public`);
       }
-      for (const path of ["/", "/account", "/admin"]) {
+      for (const path of ["/", "/account", "/admin", "/admin/users"]) {
         const response = await get(path);
         assert.equal(response.status, 307, `${path} should redirect`);
         assert.equal(new URL(response.headers.get("location"), baseUrl).pathname, "/login");
@@ -36,6 +36,9 @@ test("application pages require a valid session while sign-in and recovery remai
       const admin = await get("/admin", login.sessionToken);
       assert.equal(admin.status, 307);
       assert.equal(new URL(admin.headers.get("location"), baseUrl).pathname, "/account");
+      const userDirectory = await get("/admin/users", login.sessionToken);
+      assert.equal(userDirectory.status, 307);
+      assert.equal(new URL(userDirectory.headers.get("location"), baseUrl).pathname, "/account");
 
       const saved = await fixture.user();
       const current = await readDocument(controlContainer(), "user", saved.partitionKey);
@@ -50,8 +53,9 @@ test("application pages require a valid session while sign-in and recovery remai
         password: "Synthetic-only-Password-17!",
       });
       assert.equal((await get("/admin", adminLogin.sessionToken)).status, 200);
+      assert.equal((await get("/admin/users", adminLogin.sessionToken)).status, 200);
       await fixture.action("logout", {}, adminLogin.sessionToken);
-      for (const path of ["/", "/account", "/admin"]) {
+      for (const path of ["/", "/account", "/admin", "/admin/users"]) {
         assert.equal((await get(path, adminLogin.sessionToken)).status, 307, `${path} must reject revoked sessions`);
       }
     } finally {

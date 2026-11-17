@@ -36,14 +36,18 @@ const businessUpdateSchema = z
   })
   .strict();
 
+const invitationEmailSchema = z
+  .string()
+  .trim()
+  .pipe(z.email().max(254))
+  .transform((value) => value.toLowerCase());
+
 const createInvitationSchema = z
-  .object({
-    email: z
-      .string()
-      .trim()
-      .pipe(z.email().max(254))
-      .transform((value) => value.toLowerCase()),
-  })
+  .object({ email: invitationEmailSchema })
+  .strict();
+
+const deleteInvitationSchema = z
+  .object({ email: invitationEmailSchema })
   .strict();
 
 const acceptInvitationSchema = z
@@ -54,6 +58,7 @@ const acceptInvitationSchema = z
 
 export type BusinessUpdateInput = z.infer<typeof businessUpdateSchema>;
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
+export type DeleteInvitationInput = z.infer<typeof deleteInvitationSchema>;
 export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
 
 export function parseBusinessUpdateInput(input: unknown): BusinessUpdateInput {
@@ -64,6 +69,12 @@ export function parseCreateInvitationInput(
   input: unknown,
 ): CreateInvitationInput {
   return createInvitationSchema.parse(input);
+}
+
+export function parseDeleteInvitationInput(
+  input: unknown,
+): DeleteInvitationInput {
+  return deleteInvitationSchema.parse(input);
 }
 
 export function parseAcceptInvitationInput(

@@ -3,16 +3,16 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import {
   getRequestViewer,
-  resolveRequestSession,
+  type UserDocument,
 } from "./auth";
-import { secureEqual, sha256 } from "./auth-crypto";
+import { sha256 } from "./auth-crypto";
 import {
   invitationEmail,
   deliverNotification,
   makeNotification,
 } from "./auth-notifications";
-import { acceptCompanyUserMembership } from "./auth-service";
 import {
+  commitBatch,
   controlContainer,
   createDocument,
   isConflict,
@@ -34,17 +34,42 @@ import {
 import type {
   BusinessUpdateInput,
   CreateInvitationInput,
+  DeleteInvitationInput,
 } from "./business-validation";
 import {
   requireCompanyAdmin,
   requireTenantContext,
 } from "./tenant-context";
+import { DATA_RETENTION } from "./data-retention";
 
 const INVITATION_SECONDS = 7 * 24 * 60 * 60;
-const INVITATION_RETENTION_SECONDS = 365 * 24 * 60 * 60;
 
 function businessError(status: number, message: string): StorageError {
   return new StorageError(message, status);
+}
+
+async function acceptedInvitationAccountWasDeleted(
+  invitation: BusinessInvitationDocument,
+): Promise<boolean> {
+  if (!invitation.acceptedByUserId) return false;
+  const iterator = controlContainer().items.query<{
+    status: UserDocument["status"];
+  }>(
+    {
+      query:
+        "SELECT TOP 2 c.status FROM c WHERE c.type = @type AND c.userId = @userId",
+      parameters: [
+        { name: "@type", value: "user" },
+        { name: "@userId", value: invitation.acceptedByUserId },
+      ],
+    },
+    { maxItemCount: 2 },
+  );
+  const result = await iterator.fetchNext();
+  if (result.resources.length > 1) {
+    throw businessError(503, "The accepted account record is not unique.");
+  }
+  return result.resources[0]?.status === "deleted";
 }
 
 async function readActiveBusiness(
@@ -103,10 +128,11 @@ export async function getBusinessSetup(
   const invitations = canManage
     ? await queryAllPages<BusinessInvitationDocument>(
         controlContainer(),
-        "SELECT * FROM c WHERE c.partitionKey = @tenantId AND c.type = @type",
+        "SELECT * FROM c WHERE c.partitionKey = @tenantId AND c.type = @type AND c.status = @status",
         [
           { name: "@tenantId", value: context.tenantId },
           { name: "@type", value: "business-invitation" },
+          { name: "@status", value: "pending" },
         ],
         50,
         200,
@@ -172,7 +198,10 @@ export async function createBusinessInvitation(
     id,
     context.tenantId,
   );
-  if (existing?.document.status === "accepted") {
+  if (
+    existing?.document.status === "accepted" &&
+    !(await acceptedInvitationAccountWasDeleted(existing.document))
+  ) {
     throw businessError(409, "This invitation has already been accepted.");
   }
   const now = new Date();
@@ -188,12 +217,15 @@ export async function createBusinessInvitation(
     status: "pending",
     tokenHash: sha256(token),
     invitedByUserId: viewer.user.id,
-    createdAt: existing?.document.createdAt ?? now.toISOString(),
+    createdAt:
+      existing?.document.status === "pending"
+        ? existing.document.createdAt
+        : now.toISOString(),
     updatedAt: now.toISOString(),
     expiresAt: new Date(
       now.getTime() + INVITATION_SECONDS * 1000,
     ).toISOString(),
-    ttl: INVITATION_RETENTION_SECONDS,
+    ttl: DATA_RETENTION.invitationPendingSeconds,
   };
   try {
     if (existing) {
@@ -215,6 +247,7 @@ export async function createBusinessInvitation(
     viewer.user.id,
     "business-invitation",
     invitationEmail(input.email, business.document.name, token),
+    invitation.id,
   );
   await createDocument(controlContainer(), notification);
   if (!(await deliverNotification(context.tenantId, notification.id))) {
@@ -225,93 +258,53 @@ export async function createBusinessInvitation(
   }
 }
 
-function parseInvitationToken(token: string): {
-  tenantId: string;
-  invitationId: string;
-} | null {
-  const [tenantId, invitationId, secret, ...extra] = token.split(".");
-  if (
-    extra.length > 0 ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      tenantId,
-    ) ||
-    !/^invitation_[0-9a-f]{64}$/.test(invitationId) ||
-    !/^[A-Za-z0-9_-]{43}$/.test(secret)
-  ) {
-    return null;
-  }
-  return { tenantId, invitationId };
-}
-
-export async function acceptBusinessInvitation(
+export async function deleteBusinessInvitation(
   request: Request,
-  token: string,
+  input: DeleteInvitationInput,
 ): Promise<void> {
-  const authenticated = await resolveRequestSession(request);
-  if (!authenticated) {
-    throw businessError(401, "Sign in is required.");
-  }
-  const parsed = parseInvitationToken(token);
-  if (!parsed) {
-    throw businessError(400, "The invitation link is invalid.");
-  }
+  const viewer = await getRequestViewer(request);
+  const context = requireTenantContext(viewer);
+  requireCompanyAdmin(context);
+  const id = `invitation_${sha256(input.email)}`;
   const invitation = await readDocument<BusinessInvitationDocument>(
     controlContainer(),
-    parsed.invitationId,
-    parsed.tenantId,
+    id,
+    context.tenantId,
   );
   if (
     !invitation ||
     invitation.document.type !== "business-invitation" ||
-    invitation.document.status !== "pending" ||
-    Date.parse(invitation.document.expiresAt) <= Date.now() ||
-    !secureEqual(invitation.document.tokenHash, sha256(token))
+    invitation.document.email !== input.email
   ) {
-    throw businessError(400, "The invitation link is invalid or has expired.");
+    throw businessError(404, "The pending invitation was not found.");
   }
-  if (authenticated.user.document.email !== invitation.document.email) {
-    throw businessError(
-      403,
-      "Sign in with the email address that received this invitation.",
-    );
+  if (invitation.document.status !== "pending") {
+    throw businessError(409, "Only pending invitations can be deleted.");
   }
-  await acceptCompanyUserMembership(authenticated.user, parsed.tenantId);
-  const latest = await readDocument<BusinessInvitationDocument>(
+  const retryableNotifications = await queryAllPages<{ id: string }>(
     controlContainer(),
-    parsed.invitationId,
-    parsed.tenantId,
+    "SELECT c.id FROM c WHERE c.partitionKey = @tenantId AND c.type = @type AND c.event = @event AND c.relatedId = @relatedId AND c.status != @sent",
+    [
+      { name: "@tenantId", value: context.tenantId },
+      { name: "@type", value: "notification" },
+      { name: "@event", value: "business-invitation" },
+      { name: "@relatedId", value: invitation.document.id },
+      { name: "@sent", value: "sent" },
+    ],
+    50,
+    90,
   );
-  if (!latest) {
-    throw businessError(503, "The invitation could not be completed.");
-  }
-  if (
-    latest.document.status === "accepted" &&
-    latest.document.acceptedByUserId === authenticated.user.document.userId
-  ) {
-    return;
-  }
-  if (
-    latest.document.status !== "pending" ||
-    !secureEqual(latest.document.tokenHash, sha256(token))
-  ) {
-    throw businessError(409, "The invitation changed. Refresh and retry.");
-  }
-  try {
-    await replaceDocument(
-      controlContainer(),
-      {
-        ...latest.document,
-        status: "accepted",
-        acceptedByUserId: authenticated.user.document.userId,
-        tokenHash: sha256(randomBytes(32).toString("base64url")),
-        updatedAt: new Date().toISOString(),
-      },
-      latest.etag,
-    );
-  } catch (error) {
-    if (isPreconditionFailed(error)) {
-      throw businessError(409, "The invitation changed. Refresh and retry.");
-    }
-    throw error;
-  }
+  await commitBatch(controlContainer(), context.tenantId, [
+    ...retryableNotifications.map(
+      (notification): import("@azure/cosmos").OperationInput => ({
+        operationType: "Delete",
+        id: notification.id,
+      }),
+    ),
+    {
+      operationType: "Delete",
+      id: invitation.document.id,
+    },
+  ]);
 }
+

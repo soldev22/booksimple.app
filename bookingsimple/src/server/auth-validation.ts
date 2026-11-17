@@ -3,6 +3,7 @@ import { z } from "zod";
 const emailSchema = z.email().max(254).transform((email) => email.trim().toLowerCase());
 const passwordSchema = z.string().min(12).max(128);
 const uuidSchema = z.uuid();
+const invitationTokenSchema = z.string().min(80).max(300);
 
 export const authSchemas = {
   register: z
@@ -17,17 +18,31 @@ export const authSchemas = {
             : value,
         z.string().trim().min(2).max(120).optional(),
       ),
+      invitationToken: invitationTokenSchema.optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (input) => !(input.businessName && input.invitationToken),
+      { path: ["businessName"], message: "An invitation cannot create a new business." },
+    ),
   login: z
     .object({
       email: emailSchema,
       password: z.string().min(1).max(128),
+      invitationToken: invitationTokenSchema.optional(),
     })
     .strict(),
-  verify: z.object({ token: z.string().min(40).max(140) }).strict(),
+  verify: z
+    .object({
+      token: z.string().min(40).max(140),
+      invitationToken: invitationTokenSchema.optional(),
+    })
+    .strict(),
   "request-reset": z.object({ email: emailSchema }).strict(),
   "resend-verification": z.object({ email: emailSchema }).strict(),
+  "resubmit-application": z
+    .object({ businessName: z.string().trim().min(2).max(120) })
+    .strict(),
   reset: z
     .object({
       token: z.string().min(40).max(140),
@@ -44,6 +59,10 @@ export const authSchemas = {
   "platform-role": z
     .object({ userId: uuidSchema, enabled: z.boolean() })
     .strict(),
+  "account-status": z
+    .object({ userId: uuidSchema, paused: z.boolean() })
+    .strict(),
+  "delete-user": z.object({ userId: uuidSchema }).strict(),
   assign: z
     .object({
       userId: uuidSchema,

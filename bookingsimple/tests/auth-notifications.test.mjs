@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sendWithPostmark } from "../src/server/auth-notifications.ts";
+import {
+  invitationEmail,
+  sendWithPostmark,
+} from "../src/server/auth-notifications.ts";
+
+test("business invitations open the registration flow", (t) => {
+  const originalOrigin = process.env.APP_ORIGIN;
+  process.env.APP_ORIGIN = "https://booksimple.example";
+  t.after(() => {
+    if (originalOrigin === undefined) delete process.env.APP_ORIGIN;
+    else process.env.APP_ORIGIN = originalOrigin;
+  });
+
+  const token = "invitation-token";
+  const payload = invitationEmail(
+    "invited@example.invalid",
+    "Example Business",
+    token,
+  );
+  const link = payload.textBody.match(/https?:\/\/\S+/)?.[0];
+  assert.ok(link);
+  const url = new URL(link);
+  assert.equal(url.pathname, "/register");
+  assert.equal(url.searchParams.get("invitation"), token);
+  assert.match(payload.textBody, /Create your account or sign in to join/);
+});
 
 test("Postmark responses retain safe error codes without exposing provider messages", async (t) => {
   const originalToken = process.env.POSTMARK_SERVER_TOKEN;

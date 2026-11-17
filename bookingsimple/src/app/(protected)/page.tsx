@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { HeaderUserActions, PageFooter } from "@/app/components/page-chrome";
 import { getViewer } from "@/server/auth";
 
 type IconName =
@@ -20,7 +21,7 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { label: "Dashboard", icon: "dashboard", active: true },
   { label: "Inbox", icon: "inbox" },
-  { label: "Customers", icon: "customers" },
+  { label: "Customers", icon: "customers", href: "/customers" },
   { label: "Bookings", icon: "bookings" },
   { label: "Services", icon: "services" },
   { label: "Settings", icon: "settings", href: "/settings" },
@@ -121,7 +122,7 @@ function Navigation() {
 const dashboardMetrics = [
   { label: "Today's bookings", detail: "Booking tools are coming later" },
   { label: "Open conversations", detail: "Inbox tools are coming later" },
-  { label: "Customers", detail: "Customer tools are coming later" },
+  { label: "Customers", detail: "Manage customer records" },
   { label: "Services", detail: "Service tools are coming later" },
 ];
 
@@ -180,10 +181,7 @@ export default async function Home() {
             </span>
             <span className="breadcrumb-current">Dashboard</span>
           </div>
-          <div className="topbar-status">
-            <span aria-hidden="true" className="status-dot" />
-            <Link href="/account">My account</Link>
-          </div>
+          <HeaderUserActions viewer={viewer} />
         </header>
 
         <div className="mobile-navigation">
@@ -264,7 +262,9 @@ export default async function Home() {
                     <Icon name={item.icon} />
                   </span>
                   <span className="area-name">{item.label}</span>
-                  <span className="area-status">Coming later</span>
+                  <span className="area-status">
+                    {item.href ? "Available" : "Coming later"}
+                  </span>
                   <span aria-hidden="true" className="area-arrow">
                     →
                   </span>
@@ -274,10 +274,7 @@ export default async function Home() {
           </section>
         </main>
 
-        <footer className="page-footer">
-          <span>BookSimple</span>
-          <span>Built for the way your business works.</span>
-        </footer>
+        <PageFooter />
       </div>
     </div>
   );

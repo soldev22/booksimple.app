@@ -11,7 +11,7 @@ export type UserView = {
   id: string;
   email: string;
   name: string;
-  status: "pending" | "active" | "disabled";
+  status: "pending" | "active" | "disabled" | "deleted";
   platformAdmin: boolean;
   emailVerified: boolean;
   mfaEnabled: boolean;
@@ -21,6 +21,7 @@ export type UserView = {
     role: CompanyRole;
   };
   application?: {
+    businessId: string;
     businessName: string;
     status: "pending" | "approved" | "rejected";
   };
@@ -36,4 +37,6 @@ export type BusinessView = {
   id: string;
   name: string;
   status: "pending" | "active" | "rejected" | "disabled";
+  memberCount: number;
+  createdAt: string;
 };

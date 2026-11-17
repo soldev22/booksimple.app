@@ -4,7 +4,14 @@ import { getSafeError, runAdminAction } from "@/server/auth-service";
 import { consumeRateLimit } from "@/server/auth-storage";
 import { parseAuthInput } from "@/server/auth-validation";
 
-const adminActionSchemas = ["approve", "reject", "platform-role", "assign"] as const;
+const adminActionSchemas = [
+  "approve",
+  "reject",
+  "platform-role",
+  "account-status",
+  "delete-user",
+  "assign",
+] as const;
 type AdminAction = (typeof adminActionSchemas)[number];
 const MAX_BODY_BYTES = 8_192;
 export const runtime = "nodejs";

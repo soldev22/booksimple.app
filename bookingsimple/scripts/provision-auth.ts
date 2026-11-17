@@ -5,18 +5,25 @@ import {
   AUTH_SESSIONS_CONTAINER_ID,
   AUTH_THROTTLES_CONTAINER_ID,
 } from "../src/server/auth-storage";
+import { CUSTOMER_CONTAINER_ID } from "../src/server/customer-types";
 
 const API_VERSION = "2024-05-15";
 const MANAGEMENT_ENDPOINT = "https://management.azure.com";
 const containerDefinitions = [
-  AUTH_CONTROL_CONTAINER_ID,
-  AUTH_SESSIONS_CONTAINER_ID,
-  AUTH_THROTTLES_CONTAINER_ID,
-].map((id) => ({
-  id,
-  partitionKey: { paths: ["/partitionKey"], kind: "Hash" },
-  defaultTtl: -1,
-}));
+  ...[
+    AUTH_CONTROL_CONTAINER_ID,
+    AUTH_SESSIONS_CONTAINER_ID,
+    AUTH_THROTTLES_CONTAINER_ID,
+  ].map((id) => ({
+    id,
+    partitionKeyPath: "/partitionKey",
+    defaultTtl: -1,
+  })),
+  {
+    id: CUSTOMER_CONTAINER_ID,
+    partitionKeyPath: "/tenantId",
+  },
+];
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
@@ -143,12 +150,14 @@ function verifyContainer(
     definition?.id !== expected.id ||
     !Array.isArray(partitionKey?.paths) ||
     partitionKey.paths.length !== 1 ||
-    partitionKey.paths[0] !== "/partitionKey" ||
+    partitionKey.paths[0] !== expected.partitionKeyPath ||
     partitionKey.kind !== "Hash" ||
-    definition?.defaultTtl !== -1
+    ("defaultTtl" in expected
+      ? definition?.defaultTtl !== expected.defaultTtl
+      : definition?.defaultTtl !== undefined)
   ) {
     throw new Error(
-      `Container ${expected.id} does not match the reviewed auth schema; no automatic migration was attempted.`,
+      `Container ${expected.id} does not match the reviewed data schema; no automatic migration was attempted.`,
     );
   }
 }
@@ -185,8 +194,13 @@ async function main(): Promise<void> {
         properties: {
           resource: {
             id: definition.id,
-            partitionKey: definition.partitionKey,
-            defaultTtl: definition.defaultTtl,
+            partitionKey: {
+              paths: [definition.partitionKeyPath],
+              kind: "Hash",
+            },
+            ...("defaultTtl" in definition
+              ? { defaultTtl: definition.defaultTtl }
+              : {}),
           },
         },
       },
@@ -194,7 +208,7 @@ async function main(): Promise<void> {
     );
     verifyContainer(resource, definition);
     console.log(
-      `Verified ${AUTH_DATABASE_ID}/${definition.id} (/partitionKey, TTL enabled).`,
+      `Verified ${AUTH_DATABASE_ID}/${definition.id} (${definition.partitionKeyPath}${"defaultTtl" in definition ? ", TTL enabled" : ""}).`,
     );
   }
 }
@@ -215,6 +229,6 @@ main().catch((error: unknown) => {
     typeof detail.statusCode === "number"
       ? `, status ${detail.statusCode}`
       : "";
-  console.error(`Auth database provisioning failed during ${phase} (${name}${status}). ${message}`);
+  console.error(`Database provisioning failed during ${phase} (${name}${status}). ${message}`);
   process.exitCode = 1;
 });

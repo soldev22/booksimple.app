@@ -14,6 +14,7 @@ const allowedActions = new Set<AuthAction>([
   "verify",
   "request-reset",
   "resend-verification",
+  "resubmit-application",
   "reset",
 ]);
 const MAX_BODY_BYTES = 8_192;

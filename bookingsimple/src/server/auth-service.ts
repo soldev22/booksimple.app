@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { OperationInput } from "@azure/cosmos";
 import { randomUUID, randomBytes } from "node:crypto";
 import { Secret } from "otpauth";
 import {
@@ -53,9 +54,16 @@ import {
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
   type BusinessDocument,
+  type BusinessInvitationDocument,
 } from "./business-types";
 import type { BusinessView, UserView, Viewer } from "./auth-types";
 import type { AuthAction } from "./auth-validation";
+import {
+  assertTenantAccess,
+  requireCompanyAdmin,
+  resolveTenantContext,
+} from "./tenant-context";
+import { DATA_RETENTION } from "./data-retention";
 
 const ACCOUNT_MEMBERSHIP_ID = "user";
 const MFA_KEY = "AUTH_MFA_ENCRYPTION_KEY";
@@ -67,6 +75,19 @@ const BACKUP_CODE_COUNT = 10;
 type BatchResponse = {
   code?: number;
   result?: { statusCode: number }[];
+};
+
+type EmailIndexDocument = AuthDocument & {
+  type: "email-index";
+  normalizedEmail: string;
+  userId: string;
+};
+
+type DeletedUserTombstoneDocument = AuthDocument & {
+  type: "deleted-user-tombstone";
+  userId: string;
+  createdAt: string;
+  deletedAt: string;
 };
 
 function batchFailureCode(response: BatchResponse): number | undefined {
@@ -90,6 +111,7 @@ export async function replaceUserWithAdminAudit(
   actor: UserDocument,
   action: string,
   tenantId?: string,
+  additionalOperations: OperationInput[] = [],
 ): Promise<void> {
   const audit: AffectedAccountAuditDocument = {
     id: `account_audit_${randomUUID()}`,
@@ -102,7 +124,7 @@ export async function replaceUserWithAdminAudit(
     ...(tenantId ? { affectedTenantId: tenantId } : {}),
     outcome: "succeeded",
     createdAt: new Date().toISOString(),
-    ttl: 31_536_000,
+    ttl: DATA_RETENTION.privilegedAuditSeconds,
   };
   const response = await controlContainer().items.batch(
     [
@@ -113,6 +135,7 @@ export async function replaceUserWithAdminAudit(
         ifMatch: current.etag,
       },
       { operationType: "Create", resourceBody: audit },
+      ...additionalOperations,
     ],
     current.document.partitionKey,
   );
@@ -168,7 +191,7 @@ type AuditDocument = AuthDocument & {
   outcome: "started" | "succeeded" | "failed";
   createdAt: string;
   completedAt?: string;
-  ttl: 31_536_000;
+  ttl: number;
 };
 
 type AffectedAccountAuditDocument = AuthDocument & {
@@ -179,7 +202,7 @@ type AffectedAccountAuditDocument = AuthDocument & {
   affectedTenantId?: string;
   outcome: "succeeded";
   createdAt: string;
-  ttl: 31_536_000;
+  ttl: number;
 };
 
 function authError(status: number, message: string): StorageError {
@@ -290,12 +313,78 @@ async function findUserById(
   return readDocument<UserDocument>(control, "user", resource.partitionKey);
 }
 
+function parseInvitationToken(token: string): {
+  tenantId: string;
+  invitationId: string;
+} | null {
+  const [tenantId, invitationId, secret, ...extra] = token.split(".");
+  if (
+    extra.length > 0 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      tenantId,
+    ) ||
+    !/^invitation_[0-9a-f]{64}$/.test(invitationId) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(secret)
+  ) {
+    return null;
+  }
+  return { tenantId, invitationId };
+}
+
+async function readPendingBusinessInvitation(
+  token: string,
+): Promise<Versioned<BusinessInvitationDocument>> {
+  const parsed = parseInvitationToken(token);
+  if (!parsed) {
+    throw authError(400, "The invitation link is invalid.");
+  }
+  const invitation = await readDocument<BusinessInvitationDocument>(
+    controlContainer(),
+    parsed.invitationId,
+    parsed.tenantId,
+  );
+  if (
+    !invitation ||
+    invitation.document.type !== "business-invitation" ||
+    invitation.document.status !== "pending" ||
+    Date.parse(invitation.document.expiresAt) <= Date.now() ||
+    !secureEqual(invitation.document.tokenHash, sha256(token))
+  ) {
+    throw authError(400, "The invitation link is invalid or has expired.");
+  }
+  return invitation;
+}
+
+export async function getInvitationRegistrationDetails(
+  token: string,
+): Promise<{ email: string; businessName: string }> {
+  const invitation = await readPendingBusinessInvitation(token);
+  const business = await readBusiness(invitation.document.partitionKey);
+  if (!business || business.document.status !== "active") {
+    throw authError(400, "The invitation link is invalid or has expired.");
+  }
+  return {
+    email: invitation.document.email,
+    businessName: business.document.name,
+  };
+}
+
 async function createRegistration(
   name: string,
   email: string,
   password: string,
   businessName?: string,
+  invitationToken?: string,
 ): Promise<AuthActionResult> {
+  if (invitationToken) {
+    const invitation = await readPendingBusinessInvitation(invitationToken);
+    if (invitation.document.email !== email) {
+      throw authError(
+        403,
+        "Register with the email address that received this invitation.",
+      );
+    }
+  }
   const emailKey = accountPartition(normalizeEmail(email));
   const userId = randomUUID();
   const businessId = businessName ? randomUUID() : undefined;
@@ -339,9 +428,34 @@ async function createRegistration(
     emailKey,
     userId,
     "email-verification",
-    verificationEmail(email, name, verificationToken),
+    verificationEmail(email, name, verificationToken, invitationToken),
   );
   const control = controlContainer();
+  const deletedAccount = await readDocument<UserDocument>(
+    control,
+    ACCOUNT_MEMBERSHIP_ID,
+    emailKey,
+  );
+  const recycledAccount =
+    deletedAccount?.document.type === "user" &&
+    deletedAccount.document.status === "deleted"
+      ? deletedAccount
+      : null;
+  const existingEmailIndex = recycledAccount
+    ? await readDocument<EmailIndexDocument>(
+        control,
+        "email-index",
+        emailKey,
+      )
+    : null;
+  const emailIndex: EmailIndexDocument = {
+    id: "email-index",
+    partitionKey: emailKey,
+    type: "email-index",
+    schemaVersion: 1,
+    normalizedEmail: email,
+    userId,
+  };
   let createdBusiness = false;
   if (businessName && businessId) {
     const business: BusinessDocument = {
@@ -368,18 +482,39 @@ async function createRegistration(
   try {
     await control.items.batch(
       [
-        { operationType: "Create", resourceBody: user },
-        {
-          operationType: "Create",
-          resourceBody: {
-            id: "email-index",
-            partitionKey: emailKey,
-            type: "email-index",
-            schemaVersion: 1,
-            normalizedEmail: email,
-            userId,
-          },
-        },
+        recycledAccount
+          ? {
+              operationType: "Replace",
+              id: recycledAccount.document.id,
+              resourceBody: user,
+              ifMatch: recycledAccount.etag,
+            }
+          : { operationType: "Create", resourceBody: user },
+        existingEmailIndex
+          ? {
+              operationType: "Replace",
+              id: existingEmailIndex.document.id,
+              resourceBody: emailIndex,
+              ifMatch: existingEmailIndex.etag,
+            }
+          : { operationType: "Create", resourceBody: emailIndex },
+        ...(recycledAccount
+          ? [{
+              operationType: "Create" as const,
+              resourceBody: {
+                id: `deleted_user_${recycledAccount.document.userId}`,
+                partitionKey: emailKey,
+                type: "deleted-user-tombstone",
+                schemaVersion: 1,
+                userId: recycledAccount.document.userId,
+                createdAt: recycledAccount.document.createdAt,
+                deletedAt:
+                  recycledAccount.document.deletedAt ??
+                  recycledAccount.document.updatedAt,
+                ttl: DATA_RETENTION.deletedAccountTombstoneSeconds,
+              } satisfies DeletedUserTombstoneDocument,
+            }]
+          : []),
         { operationType: "Create", resourceBody: verification },
         { operationType: "Create", resourceBody: notification },
       ],
@@ -478,7 +613,11 @@ async function resendVerification(email: string): Promise<AuthActionResult> {
   };
 }
 
-async function login(email: string, password: string): Promise<AuthActionResult> {
+async function login(
+  email: string,
+  password: string,
+  invitationToken?: string,
+): Promise<AuthActionResult> {
   const userResult = await findUserByEmail(email);
   const dummyHash =
     dummyPasswordHash ?? (dummyPasswordHash = hashPassword("invalid-login-password"));
@@ -497,18 +636,38 @@ async function login(email: string, password: string): Promise<AuthActionResult>
   if (userResult.document.status !== "active") {
     throw authError(401, "The email or password is incorrect.");
   }
-  const user = userResult.document;
+  let user = userResult.document;
+  if (invitationToken) {
+    await acceptBusinessInvitationForUser(userResult, invitationToken);
+    const updatedUser = await readDocument<UserDocument>(
+      controlContainer(),
+      ACCOUNT_MEMBERSHIP_ID,
+      userResult.document.partitionKey,
+    );
+    if (!updatedUser) {
+      throw authError(503, "The invited account could not be loaded.");
+    }
+    user = updatedUser.document;
+  }
   const session = await createSession(user, false);
   return {
     status: 200,
-    body: { message: "Signed in.", redirect: "/account" },
+    body: {
+      message: invitationToken
+        ? "Invitation accepted. You are now signed in."
+        : "Signed in.",
+      redirect: "/account",
+    },
     sessionToken: session.token,
   };
 }
 
 let dummyPasswordHash: Promise<string> | undefined;
 
-async function verifyEmail(token: string): Promise<AuthActionResult> {
+async function verifyEmail(
+  token: string,
+  invitationToken?: string,
+): Promise<AuthActionResult> {
   const record = userToken(token, "email-verification");
   const control = controlContainer();
   const tokenResult = await readDocument<TokenDocument>(
@@ -536,6 +695,12 @@ async function verifyEmail(token: string): Promise<AuthActionResult> {
     userResult.document.status === "disabled"
   ) {
     throw authError(400, "The link is invalid or has expired.");
+  }
+  if (invitationToken) {
+    const invitation = await readPendingBusinessInvitation(invitationToken);
+    if (invitation.document.email !== userResult.document.email) {
+      throw authError(400, "The invitation link is invalid or has expired.");
+    }
   }
   const updatedUser: UserDocument = {
     ...userResult.document,
@@ -567,9 +732,28 @@ async function verifyEmail(token: string): Promise<AuthActionResult> {
   if (!batchSucceeded(response)) {
     throw authError(400, "The link is invalid or has expired.");
   }
+  if (invitationToken) {
+    const verifiedUser = await readDocument<UserDocument>(
+      control,
+      ACCOUNT_MEMBERSHIP_ID,
+      record.partitionKey,
+    );
+    if (!verifiedUser) {
+      throw authError(503, "The verified account could not be loaded.");
+    }
+    await acceptBusinessInvitationForUser(verifiedUser, invitationToken);
+  }
   return {
     status: 200,
-    body: { message: "Email verified. You can now sign in.", redirect: "/login?verified=1" },
+    body: invitationToken
+      ? {
+          message: "Email verified and invitation accepted. You can now sign in.",
+          redirect: "/login?verified=1&invitation=accepted",
+        }
+      : {
+          message: "Email verified. You can now sign in.",
+          redirect: "/login?verified=1",
+        },
   };
 }
 
@@ -932,7 +1116,7 @@ function createAudit(
     ...(tenantId ? { affectedTenantId: tenantId } : {}),
     outcome: "started",
     createdAt: new Date().toISOString(),
-    ttl: 31_536_000,
+    ttl: DATA_RETENTION.privilegedAuditSeconds,
   };
 }
 
@@ -991,6 +1175,44 @@ async function startPlatformAction(request: Request) {
   return current.user.document;
 }
 
+type UserManagementScope = {
+  actor: UserDocument;
+  platformAdmin: boolean;
+  tenantId?: string;
+};
+
+async function startUserManagementAction(
+  request: Request,
+): Promise<UserManagementScope> {
+  const current = await requireOwnSession(request);
+  if (current.user.document.platformAdmin) {
+    return { actor: current.user.document, platformAdmin: true };
+  }
+  const context = await resolveTenantContext(current.user.document);
+  if (!context) {
+    throw authError(403, "An active business membership is required.");
+  }
+  requireCompanyAdmin(context);
+  return {
+    actor: current.user.document,
+    platformAdmin: false,
+    tenantId: context.tenantId,
+  };
+}
+
+function requireManagedTenantUser(
+  target: UserDocument,
+  tenantId?: string,
+): void {
+  if (!tenantId) return;
+  if (
+    target.platformAdmin ||
+    target.membership?.tenantId !== tenantId
+  ) {
+    throw authError(403, "You can manage only users in your active business.");
+  }
+}
+
 async function setPlatformRole(
   actor: UserDocument,
   userId: string,
@@ -1028,6 +1250,214 @@ async function setPlatformRole(
         throw error;
       }
     },
+  );
+}
+
+async function hasAnotherCompanyAdmin(
+  target: UserDocument,
+  activeOnly: boolean,
+): Promise<boolean> {
+  const tenantId = target.membership?.tenantId;
+  if (!tenantId || target.membership?.role !== "company_admin") {
+    return true;
+  }
+  const statusClause = activeOnly
+    ? "AND c.status = @active"
+    : "AND c.status != @deleted";
+  const iterator = controlContainer().items.query<{ userId: string }>({
+    query: `SELECT TOP 1 c.userId FROM c
+      WHERE c.type = @type
+        AND c.membership.tenantId = @tenantId
+        AND c.membership.role = @role
+        AND c.userId != @userId
+        ${statusClause}`,
+    parameters: [
+      { name: "@type", value: "user" },
+      { name: "@tenantId", value: tenantId },
+      { name: "@role", value: "company_admin" },
+      { name: "@userId", value: target.userId },
+      ...(activeOnly ? [{ name: "@active", value: "active" }] : []),
+      ...(!activeOnly ? [{ name: "@deleted", value: "deleted" }] : []),
+    ],
+  });
+  const result = await iterator.fetchNext();
+  return result.resources.length > 0;
+}
+
+async function setAccountPaused(
+  actor: UserDocument,
+  userId: string,
+  paused: boolean,
+  managedTenantId?: string,
+): Promise<void> {
+  if (actor.userId === userId) {
+    throw authError(409, "You cannot pause or resume your own account.");
+  }
+  const target = await findUserById(userId);
+  if (!target || target.document.status === "deleted") {
+    throw authError(404, "The user was not found.");
+  }
+  requireManagedTenantUser(target.document, managedTenantId);
+  const action = paused ? "user-paused" : "user-resumed";
+  await withAudit(
+    actor,
+    action,
+    target.document.userId,
+    async () => {
+      if (paused && target.document.status === "disabled") return;
+      if (!paused && target.document.status !== "disabled") return;
+      if (
+        paused &&
+        target.document.membership?.role === "company_admin" &&
+        !(await hasAnotherCompanyAdmin(target.document, true))
+      ) {
+        throw authError(
+          409,
+          "Assign another active company administrator before pausing this account.",
+        );
+      }
+      const now = new Date().toISOString();
+      const updated: UserDocument = paused
+        ? {
+            ...target.document,
+            status: "disabled",
+            pausedStatus:
+              target.document.status === "pending" ? "pending" : "active",
+            authVersion: target.document.authVersion + 1,
+            updatedAt: now,
+          }
+        : {
+            ...target.document,
+            status: target.document.pausedStatus ?? "active",
+            pausedStatus: undefined,
+            authVersion: target.document.authVersion + 1,
+            updatedAt: now,
+          };
+      await replaceUserWithAdminAudit(
+        target,
+        updated,
+        actor,
+        action,
+        target.document.membership?.tenantId,
+      );
+    },
+    target.document.membership?.tenantId,
+  );
+}
+
+async function releaseUserMembership(user: UserDocument): Promise<boolean> {
+  if (!user.membership) return false;
+  const reservationId = `username_${sha256(user.membership.username.toLowerCase())}`;
+  const reservation = await readDocument<MembershipReservation>(
+    controlContainer(),
+    reservationId,
+    user.membership.tenantId,
+  );
+  if (
+    !reservation ||
+    reservation.document.status !== "active" ||
+    reservation.document.userId !== user.userId
+  ) {
+    return false;
+  }
+  await releaseBusinessMembership(
+    user.membership.tenantId,
+    user.membership.username,
+    user.userId,
+    reservation.document.operationId,
+    true,
+  );
+  return true;
+}
+
+async function deleteUser(
+  actor: UserDocument,
+  userId: string,
+  managedTenantId?: string,
+): Promise<void> {
+  if (actor.userId === userId) {
+    throw authError(409, "You cannot delete your own account.");
+  }
+  const target = await findUserById(userId);
+  if (!target) {
+    throw authError(404, "The user was not found.");
+  }
+  requireManagedTenantUser(target.document, managedTenantId);
+  if (target.document.status === "deleted") return;
+  await withAudit(
+    actor,
+    "user-deleted",
+    target.document.userId,
+    async () => {
+      if (
+        target.document.membership?.role === "company_admin" &&
+        !(await hasAnotherCompanyAdmin(target.document, true))
+      ) {
+        throw authError(
+          409,
+          "Assign another active company administrator before deleting this account.",
+        );
+      }
+      const now = new Date().toISOString();
+      const tombstone: UserDocument = {
+        id: target.document.id,
+        partitionKey: target.document.partitionKey,
+        type: "user",
+        schemaVersion: 1,
+        userId: target.document.userId,
+        email: `deleted-${target.document.userId}@deleted.invalid`,
+        name: "Deleted user",
+        status: "deleted",
+        passwordHash: await hashPassword(randomToken()),
+        emailVerified: false,
+        platformAdmin: false,
+        authVersion: target.document.authVersion + 1,
+        createdAt: target.document.createdAt,
+        updatedAt: now,
+        mfaEnabled: false,
+        deletedAt: now,
+        ttl: DATA_RETENTION.deletedAccountTombstoneSeconds,
+      };
+      const emailIndex = await readDocument<EmailIndexDocument>(
+        controlContainer(),
+        "email-index",
+        target.document.partitionKey,
+      );
+      const membershipReleased = await releaseUserMembership(target.document);
+      try {
+        await replaceUserWithAdminAudit(
+          target,
+          tombstone,
+          actor,
+          "user-deleted",
+          target.document.membership?.tenantId,
+          emailIndex
+            ? [{
+                operationType: "Delete",
+                id: emailIndex.document.id,
+              }]
+            : [],
+        );
+      } catch (error) {
+        if (membershipReleased && target.document.membership) {
+          try {
+            await reserveBusinessMembership(
+              target.document.membership.tenantId,
+              target.document.userId,
+              target.document.membership.username,
+              target.document.membership.role,
+            );
+          } catch {
+            throw authError(
+              503,
+              "The user deletion failed and the business membership needs review.",
+            );
+          }
+        }
+        throw error;
+      }
+    },
+    target.document.membership?.tenantId,
   );
 }
 
@@ -1192,6 +1622,7 @@ async function releaseBusinessMembership(
           ...reservation.document,
           status: "released",
           releasedAt: new Date().toISOString(),
+          ttl: DATA_RETENTION.releasedMembershipReservationSeconds,
         },
         ifMatch: reservation.etag,
       },
@@ -1282,10 +1713,27 @@ async function setMembership(
   tenantId: string,
   username: string,
   role: "company_admin" | "company_user",
+  managedTenantId?: string,
 ): Promise<void> {
   const target = await findUserById(userId);
   if (!target || target.document.status !== "active" || !target.document.emailVerified) {
     throw authError(404, "The verified user was not found.");
+  }
+  if (managedTenantId) {
+    const context = {
+      tenantId: managedTenantId,
+      businessName: "",
+      username: actor.membership?.username ?? "",
+      role: "company_admin" as const,
+    };
+    assertTenantAccess(context, tenantId);
+    requireManagedTenantUser(target.document, managedTenantId);
+    if (
+      target.document.userId === actor.userId &&
+      target.document.membership?.role !== role
+    ) {
+      throw authError(409, "You cannot change your own company role.");
+    }
   }
   assertAssignableToTenant(
     { membership: target.document.membership },
@@ -1299,6 +1747,16 @@ async function setMembership(
   }
   if (existing && existing.tenantId !== tenantId) {
     throw authError(409, "A user cannot be transferred to another business.");
+  }
+  if (
+    existing?.role === "company_admin" &&
+    role === "company_user" &&
+    !(await hasAnotherCompanyAdmin(target.document, true))
+  ) {
+    throw authError(
+      409,
+      "Assign another active company administrator before changing this role.",
+    );
   }
 
   await withAudit(
@@ -1497,6 +1955,70 @@ export async function acceptCompanyUserMembership(
   );
 }
 
+async function acceptBusinessInvitationForUser(
+  current: Versioned<UserDocument>,
+  token: string,
+): Promise<void> {
+  const invitation = await readPendingBusinessInvitation(token);
+  if (current.document.email !== invitation.document.email) {
+    throw authError(
+      403,
+      "Sign in with the email address that received this invitation.",
+    );
+  }
+  await acceptCompanyUserMembership(
+    current,
+    invitation.document.partitionKey,
+  );
+  const latest = await readDocument<BusinessInvitationDocument>(
+    controlContainer(),
+    invitation.document.id,
+    invitation.document.partitionKey,
+  );
+  if (!latest) {
+    throw authError(503, "The invitation could not be completed.");
+  }
+  if (
+    latest.document.status === "accepted" &&
+    latest.document.acceptedByUserId === current.document.userId
+  ) {
+    return;
+  }
+  if (
+    latest.document.status !== "pending" ||
+    !secureEqual(latest.document.tokenHash, sha256(token))
+  ) {
+    throw authError(409, "The invitation changed. Refresh and retry.");
+  }
+  try {
+    await replaceDocument(
+      controlContainer(),
+      {
+        ...latest.document,
+        status: "accepted",
+        acceptedByUserId: current.document.userId,
+        tokenHash: sha256(randomBytes(32).toString("base64url")),
+        updatedAt: new Date().toISOString(),
+        ttl: DATA_RETENTION.invitationFinalSeconds,
+      },
+      latest.etag,
+    );
+  } catch (error) {
+    if (isPreconditionFailed(error)) {
+      throw authError(409, "The invitation changed. Refresh and retry.");
+    }
+    throw error;
+  }
+}
+
+export async function acceptBusinessInvitation(
+  request: Request,
+  token: string,
+): Promise<void> {
+  const current = await requireOwnSession(request);
+  await acceptBusinessInvitationForUser(current.user, token);
+}
+
 async function approveApplication(
   actor: UserDocument,
   userId: string,
@@ -1526,13 +2048,16 @@ async function approveApplication(
   ) {
     throw authError(409, "The applicant already belongs to another business.");
   }
+  const approvalUsername =
+    target.document.membership?.username ??
+    `member_${target.document.userId.replace(/-/g, "").slice(0, 10)}`;
+  const approvalRole = target.document.membership?.role ?? "company_user";
 
   const result = await withAudit(
     actor,
     "business-application-approved",
     target.document.userId,
     async () => {
-      const username = `owner_${target.document.userId.replace(/-/g, "").slice(0, 10)}`;
       let heldReservation: { operationId: string } | undefined;
       try {
         let latestTarget = await readDocument<UserDocument>(
@@ -1546,8 +2071,8 @@ async function approveApplication(
         if (
           latestTarget.document.membership &&
           (latestTarget.document.membership.tenantId !== app.businessId ||
-            latestTarget.document.membership.username !== username ||
-            latestTarget.document.membership.role !== "company_admin")
+            latestTarget.document.membership.username !== approvalUsername ||
+            latestTarget.document.membership.role !== approvalRole)
         ) {
           throw authError(409, "The applicant has an incompatible business assignment.");
         }
@@ -1555,8 +2080,8 @@ async function approveApplication(
           heldReservation = await reserveBusinessMembership(
             app.businessId,
             target.document.userId,
-            username,
-            "company_admin",
+            approvalUsername,
+            approvalRole,
             true,
           );
           latestTarget = await readDocument<UserDocument>(
@@ -1570,8 +2095,8 @@ async function approveApplication(
           if (
             latestTarget.document.membership &&
             (latestTarget.document.membership.tenantId !== app.businessId ||
-              latestTarget.document.membership.username !== username ||
-              latestTarget.document.membership.role !== "company_admin")
+              latestTarget.document.membership.username !== approvalUsername ||
+              latestTarget.document.membership.role !== approvalRole)
           ) {
             throw authError(409, "The applicant has an incompatible business assignment.");
           }
@@ -1581,8 +2106,8 @@ async function approveApplication(
             ...latestTarget.document,
             membership: {
               tenantId: app.businessId,
-              username,
-              role: "company_admin",
+              username: approvalUsername,
+              role: approvalRole,
             },
             application: { ...app, status: "approved" },
             authVersion: latestTarget.document.membership
@@ -1632,11 +2157,12 @@ async function approveApplication(
           if (
             !latestTarget?.document.membership ||
             latestTarget.document.membership.tenantId !== app.businessId ||
-            latestTarget.document.membership.role !== "company_admin"
+            latestTarget.document.membership.username !== approvalUsername ||
+            latestTarget.document.membership.role !== approvalRole
           ) {
             await releaseBusinessMembership(
               app.businessId,
-              `owner_${target.document.userId.replace(/-/g, "").slice(0, 10)}`,
+              approvalUsername,
               target.document.userId,
               heldReservation.operationId,
               true,
@@ -1663,7 +2189,10 @@ async function approveApplication(
   }
   return {
     status: 200,
-    body: { message: "Business application approved." },
+    body: {
+      message:
+        "Company approved with company-user access. Assign its first company administrator from the company user group.",
+    },
   };
 }
 
@@ -1743,6 +2272,91 @@ async function rejectApplication(
   };
 }
 
+async function resubmitApplication(
+  request: Request,
+  businessName: string,
+): Promise<AuthActionResult> {
+  const { user } = await requireOwnSession(request);
+  const application = user.document.application;
+  if (
+    user.document.membership ||
+    !application ||
+    application.status !== "rejected"
+  ) {
+    throw authError(409, "Only a rejected business application can be resubmitted.");
+  }
+  const business = await readBusiness(application.businessId);
+  if (!business || business.document.status !== "rejected") {
+    throw authError(409, "The rejected business application is no longer available.");
+  }
+  await consumeRateLimit(
+    "application-resubmission",
+    user.document.partitionKey,
+    5,
+    86_400,
+  );
+  const updatedAt = new Date().toISOString();
+  const pendingBusiness: BusinessDocument = {
+    ...business.document,
+    name: businessName,
+    status: "pending",
+    updatedAt,
+  };
+  await replaceDocument(
+    controlContainer(),
+    pendingBusiness,
+    business.etag,
+  );
+  try {
+    await replaceDocument(
+      controlContainer(),
+      {
+        ...user.document,
+        application: {
+          ...application,
+          businessName,
+          status: "pending",
+        },
+        updatedAt,
+      },
+      user.etag,
+    );
+  } catch (error) {
+    const latestBusiness = await readBusiness(application.businessId);
+    if (
+      latestBusiness?.document.status === "pending" &&
+      latestBusiness.document.updatedAt === updatedAt
+    ) {
+      try {
+        await replaceDocument(
+          controlContainer(),
+          {
+            ...latestBusiness.document,
+            status: "rejected",
+            updatedAt: new Date().toISOString(),
+          },
+          latestBusiness.etag,
+        );
+      } catch {
+        throw authError(
+          503,
+          "The application could not be resubmitted. Please contact support.",
+        );
+      }
+    }
+    if (isPreconditionFailed(error)) {
+      throw authError(409, "The application changed. Refresh and retry.");
+    }
+    throw error;
+  }
+  return {
+    status: 200,
+    body: {
+      message: "Your business application was resubmitted for review.",
+    },
+  };
+}
+
 export async function runAuthAction(
   action: AuthAction,
   input: Record<string, unknown>,
@@ -1756,20 +2370,30 @@ export async function runAuthAction(
         input.email as string,
         input.password as string,
         input.businessName as string | undefined,
+        input.invitationToken as string | undefined,
       );
     case "resend-verification":
       await consumeEmailLimit(action, input.email, 3, 3600);
       return resendVerification(input.email as string);
     case "login":
       await consumeEmailLimit(action, input.email, 10, 900);
-      return login(input.email as string, input.password as string);
+      return login(
+        input.email as string,
+        input.password as string,
+        input.invitationToken as string | undefined,
+      );
     case "logout":
       return logout(request);
     case "verify":
-      return verifyEmail(input.token as string);
+      return verifyEmail(
+        input.token as string,
+        input.invitationToken as string | undefined,
+      );
     case "request-reset":
       await consumeEmailLimit(action, input.email, 5, 3600);
       return requestPasswordReset(input.email as string);
+    case "resubmit-application":
+      return resubmitApplication(request, input.businessName as string);
     case "reset":
       return resetPassword(input.token as string, input.password as string);
     case "mfa-setup":
@@ -1803,18 +2427,26 @@ async function consumeEmailLimit(
 }
 
 export async function runAdminAction(
-  action: "approve" | "reject" | "platform-role" | "assign",
+  action:
+    | "approve"
+    | "reject"
+    | "platform-role"
+    | "account-status"
+    | "delete-user"
+    | "assign",
   input: Record<string, unknown>,
   request: Request,
 ): Promise<AuthActionResult> {
-  const actor = await startPlatformAction(request);
   if (action === "approve") {
+    const actor = await startPlatformAction(request);
     return approveApplication(actor, input.userId as string);
   }
   if (action === "reject") {
+    const actor = await startPlatformAction(request);
     return rejectApplication(actor, input.userId as string);
   }
   if (action === "platform-role") {
+    const actor = await startPlatformAction(request);
     await setPlatformRole(
       actor,
       input.userId as string,
@@ -1822,12 +2454,31 @@ export async function runAdminAction(
     );
     return { status: 200, body: { message: "Platform role updated." } };
   }
+  const scope = await startUserManagementAction(request);
+  if (action === "account-status") {
+    const paused = input.paused as boolean;
+    await setAccountPaused(
+      scope.actor,
+      input.userId as string,
+      paused,
+      scope.tenantId,
+    );
+    return {
+      status: 200,
+      body: { message: paused ? "User paused." : "User resumed." },
+    };
+  }
+  if (action === "delete-user") {
+    await deleteUser(scope.actor, input.userId as string, scope.tenantId);
+    return { status: 200, body: { message: "User deleted." } };
+  }
   await setMembership(
-    actor,
+    scope.actor,
     input.userId as string,
     input.tenantId as string,
     input.username as string,
     input.role as "company_admin" | "company_user",
+    scope.tenantId,
   );
   return { status: 200, body: { message: "Business membership updated." } };
 }
@@ -1842,13 +2493,32 @@ export async function listAdminData(
   usersCursor?: string;
   businessesCursor?: string;
 }> {
-  const actor = await startPlatformAction(request);
+  const scope = await startUserManagementAction(request);
   return withAudit(
-    actor,
-    "platform-directory-read",
-    "platform-directory",
+    scope.actor,
+    scope.platformAdmin ? "platform-directory-read" : "company-directory-read",
+    scope.platformAdmin ? "platform-directory" : scope.tenantId!,
     async () => {
       const control = controlContainer();
+      const userQuery = scope.platformAdmin
+        ? "SELECT c.userId, c.email, c.name, c.status, c.platformAdmin, c.emailVerified, c.mfaEnabled, c.membership, c.application FROM c WHERE c.type = @type AND c.status != @deleted AND c.platformAdmin = false"
+        : "SELECT c.userId, c.email, c.name, c.status, c.platformAdmin, c.emailVerified, c.mfaEnabled, c.membership, c.application FROM c WHERE c.type = @type AND c.status != @deleted AND c.platformAdmin = false AND c.membership.tenantId = @tenantId";
+      const userParameters = [
+        { name: "@type", value: "user" },
+        { name: "@deleted", value: "deleted" },
+        ...(scope.tenantId
+          ? [{ name: "@tenantId", value: scope.tenantId }]
+          : []),
+      ];
+      const businessQuery = scope.platformAdmin
+        ? "SELECT c.id, c.partitionKey, c.type, c.schemaVersion, c.name, c.status, c.memberCount, c.createdAt, c.updatedAt FROM c WHERE c.type = @type"
+        : "SELECT c.id, c.partitionKey, c.type, c.schemaVersion, c.name, c.status, c.memberCount, c.createdAt, c.updatedAt FROM c WHERE c.type = @type AND c.id = @tenantId AND c.partitionKey = @tenantId";
+      const businessParameters = [
+        { name: "@type", value: "business" },
+        ...(scope.tenantId
+          ? [{ name: "@tenantId", value: scope.tenantId }]
+          : []),
+      ];
       const [userPage, businessPage] = await Promise.all([
         queryPage<{
           userId: string;
@@ -1862,16 +2532,16 @@ export async function listAdminData(
           application?: UserDocument["application"];
         }>(
           control,
-          "SELECT c.userId, c.email, c.name, c.status, c.platformAdmin, c.emailVerified, c.mfaEnabled, c.membership, c.application FROM c WHERE c.type = @type",
-          [{ name: "@type", value: "user" }],
+          userQuery,
+          userParameters,
           usersCursor,
           50,
         ),
         queryPage<BusinessDocument>(
           control,
-          "SELECT c.id, c.partitionKey, c.type, c.schemaVersion, c.name, c.status, c.memberCount, c.createdAt, c.updatedAt FROM c WHERE c.type = @type",
-          [{ name: "@type", value: "business" }],
-          businessesCursor,
+          businessQuery,
+          businessParameters,
+          scope.platformAdmin ? businessesCursor : undefined,
           50,
         ),
       ]);
@@ -1888,6 +2558,7 @@ export async function listAdminData(
           ...(user.application
             ? {
                 application: {
+                  businessId: user.application.businessId,
                   businessName: user.application.businessName,
                   status: user.application.status,
                 },
@@ -1898,6 +2569,8 @@ export async function listAdminData(
           id: business.id,
           name: business.name,
           status: business.status,
+          memberCount: business.memberCount,
+          createdAt: business.createdAt,
         })),
         ...(userPage.continuationToken
           ? { usersCursor: userPage.continuationToken }
@@ -1907,6 +2580,7 @@ export async function listAdminData(
           : {}),
       };
     },
+    scope.tenantId,
   );
 }
 

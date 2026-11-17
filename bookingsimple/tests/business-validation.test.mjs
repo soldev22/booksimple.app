@@ -4,6 +4,7 @@ import {
   parseAcceptInvitationInput,
   parseBusinessUpdateInput,
   parseCreateInvitationInput,
+  parseDeleteInvitationInput,
 } from "../src/server/business-validation.ts";
 
 test("business settings accept explicit valid values", () => {
@@ -53,6 +54,19 @@ test("company invitations accept only an email and normalize it", () => {
     parseCreateInvitationInput({
       email: "staff@example.com",
       role: "company_admin",
+    }),
+  );
+});
+
+test("invitation deletion accepts only the normalized invitee email", () => {
+  assert.deepEqual(
+    parseDeleteInvitationInput({ email: " Wrong@Example.com " }),
+    { email: "wrong@example.com" },
+  );
+  assert.throws(() =>
+    parseDeleteInvitationInput({
+      email: "wrong@example.com",
+      tenantId: "22222222-2222-4222-8222-222222222222",
     }),
   );
 });

@@ -114,7 +114,11 @@ The application now includes registration, email verification/resend, sign-in,
 password reset and platform-admin
 business approval and role assignment. Customers do not need application
 accounts. Verifying an email allows access to the account page, not a business
-workspace; a business membership must be assigned separately. MFA is
+workspace; a business membership must be assigned separately. Business
+approval creates only a `company_user` membership. A platform administrator
+must perform a separate, audited role assignment to elevate that account to
+`company_admin`; no new membership receives company-administrator access by
+default. MFA is
 temporarily unavailable for all users, including platform administrators.
 Password-only platform access carries a substantially higher security risk
 and must be reassessed before using real data or deploying to production.
@@ -141,8 +145,9 @@ and must be reassessed before using real data or deploying to production.
    verification, account restrictions or message stream errors. Raw provider
    messages and email contents are not logged. Restart the development server
    after changing environment settings, then request a resend at `/verify`.
-4. The `booksimple` database with `auth-control`, `auth-sessions` and
-   `auth-throttles` has been provisioned in the approved Azure account.
+4. The `booksimple` database with `auth-control`, `auth-sessions`,
+   `auth-throttles` and the tenant-partitioned `customers` container has been
+   provisioned in the approved Azure account.
    To provision or verify another approved target, set
    `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` and run:
 
@@ -168,6 +173,20 @@ and must be reassessed before using real data or deploying to production.
    Remove the setup token from the environment after completion. Sign in
    again before opening `/admin`. Subsequent grants require an existing
    authenticated platform administrator.
+
+Platform administrators can open `/admin/users` from the platform
+administration page to view every registered account grouped by company. The
+responsive tables show company and platform roles separately, include
+unassigned and platform-only accounts, and do not display internal company
+usernames. Both the page and its paginated data API independently enforce the
+platform role.
+
+Authenticated pages use a prominent shared header that displays the registered
+name, every assigned company/platform role and the active company on one line.
+The header includes a server-backed logout control, and protected account pages
+share a consistent footer. The account page does not repeat approved
+application, identity, role or company details already shown in the header;
+pending and rejected applications remain visible.
 
 For queued email retries:
 
@@ -202,6 +221,14 @@ The retained internal MFA tests exercise dormant implementation details, not
 available user flows; MFA HTTP endpoints are disabled.
 Neither command creates a real administrator or sends email.
 
+The live Customer authorization test uses synthetic Customers and the existing
+application on port 3000:
+
+```powershell
+$env:AUTH_PAGE_TEST_BASE_URL='http://localhost:3000'
+node --env-file=.env.local --conditions=react-server --import tsx --test tests\customer-page-access.integration.test.mjs
+```
+
 ---
 
 ## Business Setup
@@ -219,6 +246,13 @@ persisted `company_user` role, invalidates the old session and requires the user
 to sign in again. Company-administrator and platform roles cannot be granted
 through invitations.
 
+Company administrators can delete a pending invitation created for the wrong
+email address. Deletion immediately invalidates the acceptance link and removes
+any correlated pending or failed notification that could otherwise be retried.
+It cannot recall an email that Postmark has already delivered. Accepted
+invitations cannot be deleted because membership removal is a separate
+authorization operation.
+
 Existing Business documents must have explicit timezone and currency settings.
 The Stage 5 migration is idempotent and can be rerun:
 
@@ -228,6 +262,40 @@ npm run migrate:business-settings
 
 The migration uses `.env.local`, adds `Europe/London` and `GBP` only when those
 fields are missing, and does not overwrite configured values.
+
+### Data dictionary and retention
+
+[`docs/DATA-DICTIONARY.md`](docs/DATA-DICTIONARY.md) explains every persisted
+record, its owner, personal-data classification and retention in plain
+language.
+
+Preview the reviewed retention migration without changing data:
+
+```powershell
+npm run migrate:data-retention
+```
+
+After checking the counts, apply it explicitly:
+
+```powershell
+npm run migrate:data-retention -- --apply
+```
+
+The migration never prints record contents, email addresses, secrets or
+credentials.
+
+### Customer management
+
+Active company users can open `/customers` to create, search, view, edit and
+archive Customers belonging to their server-resolved business. Email and phone
+are optional. Possible duplicates produce a warning but remain separate.
+Archived Customers are retained, while permanent personal-data erasure is
+available only to company administrators.
+
+Customer data is stored in the dedicated `customers` container partitioned by
+`/tenantId`; it is never stored in the authentication container. Detail reads
+use the Customer GUID and authenticated tenant GUID together. The API never
+accepts a browser tenant ID as authorization.
 
 ---
 

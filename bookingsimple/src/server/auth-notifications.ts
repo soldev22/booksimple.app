@@ -11,6 +11,7 @@ import {
   replaceDocument,
   type AuthDocument,
 } from "./auth-storage";
+import { DATA_RETENTION } from "./data-retention";
 
 const NOTIFICATION_KEY = "AUTH_NOTIFICATION_ENCRYPTION_KEY";
 
@@ -32,6 +33,7 @@ type NotificationDocument = AuthDocument & {
     | "business-invitation";
   status: "pending" | "sent" | "failed";
   encryptedPayload?: string;
+  relatedId?: string;
   createdAt: string;
   sentAt?: string;
   lastAttemptAt?: string;
@@ -51,6 +53,7 @@ export function makeNotification(
   userId: string,
   event: NotificationDocument["event"],
   payload: NotificationPayload,
+  relatedId?: string,
 ): NotificationDocument {
   return {
     id: `notification_${randomToken(16)}`,
@@ -59,10 +62,11 @@ export function makeNotification(
     schemaVersion: 1,
     userId,
     event,
+    ...(relatedId ? { relatedId } : {}),
     status: "pending",
     encryptedPayload: encryptPayload(payload),
     createdAt: new Date().toISOString(),
-    ttl: 31_536_000,
+    ttl: DATA_RETENTION.notificationPendingSeconds,
   };
 }
 
@@ -182,6 +186,9 @@ export async function deliverNotification(
     ...current.document,
     lastAttemptAt: new Date().toISOString(),
     status: failureCode ? "failed" : "sent",
+    ttl: failureCode
+      ? DATA_RETENTION.notificationFailedSeconds
+      : DATA_RETENTION.notificationSentSeconds,
     ...(failureCode
       ? { failureCode }
       : { sentAt: new Date().toISOString(), encryptedPayload: undefined }),
@@ -194,8 +201,11 @@ export function verificationEmail(
   email: string,
   name: string,
   token: string,
+  invitationToken?: string,
 ): NotificationPayload {
-  const link = `${applicationOrigin()}/verify?token=${encodeURIComponent(token)}`;
+  const query = new URLSearchParams({ token });
+  if (invitationToken) query.set("invitation", invitationToken);
+  const link = `${applicationOrigin()}/verify?${query}`;
   const safeName = escapeHtml(name);
   return {
     to: email,
@@ -244,13 +254,13 @@ export function invitationEmail(
   businessName: string,
   token: string,
 ): NotificationPayload {
-  const link = `${applicationOrigin()}/invite?token=${encodeURIComponent(token)}`;
+  const link = `${applicationOrigin()}/register?invitation=${encodeURIComponent(token)}`;
   const safeBusinessName = escapeHtml(businessName);
   return {
     to: email,
     subject: "You have been invited to BookSimple",
-    textBody: `You have been invited to join ${businessName} on BookSimple.\n\nReview and accept the invitation: ${link}\n\nSign in or register with this email address before accepting. This invitation expires in seven days.`,
-    htmlBody: `<p>You have been invited to join ${safeBusinessName} on BookSimple.</p><p><a href="${link}">Review and accept the invitation</a></p><p>Sign in or register with this email address before accepting. This invitation expires in seven days.</p>`,
+    textBody: `You have been invited to join ${businessName} on BookSimple.\n\nCreate your account or sign in to join: ${link}\n\nUse the invited email address. Your invitation expires in seven days.`,
+    htmlBody: `<p>You have been invited to join ${safeBusinessName} on BookSimple.</p><p><a href="${link}">Create your account or sign in to join</a></p><p>Use the invited email address. Your invitation expires in seven days.</p>`,
   };
 }
 

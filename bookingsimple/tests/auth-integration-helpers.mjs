@@ -42,6 +42,9 @@ export function authFixture() {
     if (["register", "login", "resend-verification", "request-reset"].includes(name)) {
       trackThrottle(`email-${name}`, partitionKey);
     }
+    if (name === "resubmit-application") {
+      trackThrottle("application-resubmission", partitionKey);
+    }
     const mfaAction = {
       "mfa-setup": "setup",
       "mfa-enable": "enable",
@@ -65,12 +68,16 @@ export function authFixture() {
     return (await readDocument(controlContainer(), "user", partitionKey))?.document;
   }
 
-  function emailToken() {
+  function emailLink() {
     const message = messages.at(-1);
     assert.ok(message, "An email must have been submitted to the provider stub.");
     const link = message.TextBody.match(/https?:\/\/\S+/)?.[0];
     assert.ok(link, "The email must contain an action link.");
-    const token = new URL(link).searchParams.get("token");
+    return new URL(link);
+  }
+
+  function emailToken() {
+    const token = emailLink().searchParams.get("token");
     assert.ok(token);
     return token;
   }
@@ -115,6 +122,7 @@ export function authFixture() {
     email,
     action,
     user,
+    emailLink,
     emailToken,
     registerAndVerify,
     cleanup,

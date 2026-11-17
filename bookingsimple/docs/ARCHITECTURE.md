@@ -202,13 +202,11 @@ platform-administrator access must also be verified and audited. Use
 parameterized queries; never trust a tenant identifier or partition key
 supplied by the browser as authorization.
 
-The registration container layout is selected below; keys for future
-customer, communications and booking containers are **not yet selected**. The
-tenant identifier is a candidate for tenant-owned data, but its suitability
-depends on tenant count, peak traffic, data growth, retention, and query
-patterns. A user can belong to at most one business, while platform identity,
-pending applications and platform-administrator access are not ordinary
-tenant-owned records. Their lookup and storage still require deliberate design.
+The registration and Customer container layouts are selected below; keys for
+future communications and booking containers are **not yet selected**. A user
+can belong to at most one business, while platform identity, pending
+applications and platform-administrator access are not ordinary tenant-owned
+records. Their lookup and storage still require deliberate design.
 
 Before creating each container, document its access patterns, item sizes,
 per-key growth and retention, expected read/write rates and skew, transaction
@@ -230,17 +228,28 @@ one business, 10 simultaneously active users and 10 sign-ins per minute.
 Platform-administrator audit history must be retained for one year. These
 estimates do not establish document sizes, audit-event volume or data growth.
 
-## Implemented Registration Storage
+## Implemented Cosmos Storage
 
-Database: `booksimple`. All three containers use the immutable
+Database: `booksimple`. Authentication containers use the immutable
 `/partitionKey` path with Hash partitioning and `defaultTtl=-1` (TTL enabled;
-documents expire only when they specify a TTL).
+documents expire only when they specify a TTL). The Customer container uses
+the immutable `/tenantId` path and has no default TTL.
 
 | Container | Partition derivation | Records and retention |
 | --- | --- | --- |
 | `auth-control` | `account_` plus SHA-256 of trimmed, lowercase email; business GUID for business records | User/security state, hashed verification/reset tokens, encrypted email outbox, business state and settings, username reservations, business invitations, one-year admin audits, durable bootstrap lock |
 | `auth-sessions` | Owning immutable account partition key | Hashed session verifiers; maximum seven-day lifetime, explicit revocation and account authorization version checks |
 | `auth-throttles` | Hash of rate-limit scope and protected account key | Expiring, ETag-protected counters; no in-memory-only abuse protection |
+| `customers` | Server-resolved active Business GUID in `/tenantId` | Active, archived and anonymized Customer records; durable with no automatic expiry |
+
+The plain-language record inventory, sensitivity classifications and retention
+matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
+centralized in `src/server/data-retention.ts`; the corresponding migration is
+dry-run by default. Sent email payloads are removed immediately, notification
+metadata is retained for 90 days, failed or pending notification payloads for
+30 days, released membership reservations for 30 days, finalized invitations
+for 90 days, and privileged audits for one year. Deleted accounts remove their
+email index atomically and retain only an anonymized tombstone for one year.
 
 User GUIDs are retained separately from the deterministic account document ID.
 Registration creates the user, deterministic email index, verification token
@@ -254,12 +263,43 @@ using ETags; account membership writes also require ETags. Company usernames
 are lowercase and unique within their business, with a 200-user ceiling.
 Moving an assigned user to a different business is rejected.
 
+## Implemented Customer Management
+
+Customers are stored only in the dedicated `customers` container. Every list
+and search query specifies the server-resolved `/tenantId` partition, and every
+detail read is a Cosmos point read using both the Customer GUID and that same
+tenant context. The browser cannot choose or override the tenant ID. Invalid or
+cross-tenant Customer IDs return not found and cannot be used to read or update
+another business's record.
+
+Customer documents carry a `customer` discriminator and schema version. Names
+are required; email and phone are optional. Email is lowercase and trimmed.
+Phone punctuation is removed, leaving 7 to 15 digits with an optional leading
+`+`. Name, email and canonical phone searches remain inside one tenant
+partition and return continuation-token pages.
+
+Duplicate email and phone values are deliberately allowed. Create and edit
+operations run a tenant-scoped possible-duplicate query and return warnings
+without merging or blocking either record. All active company users can create,
+view, search, edit and archive Customers. Archived records remain available in
+an explicit archived view but cannot be edited.
+
+Permanent erasure is a separate `company_admin`-only operation requiring an
+explicit confirmation value. It uses an ETag-protected replacement that removes
+name, normalized search name, email and phone while retaining the Customer GUID,
+tenant GUID, schema identity, erased status and timestamps for future Booking
+and Conversation references. Ordinary deletion archives rather than erases.
+
 Approval spans account and business partitions, so it is not globally atomic.
-It reserves the owner username, records the account membership, then activates
-the business. The server withholds membership for a non-active business;
-interrupted approval can be retried without granting access to a pending
-business. Reservations are compensated when an account assignment fails.
-Inspect failed/unfinished admin audit records before manual repair.
+For a new membership it reserves a generated member username, records the
+account with the least-privileged `company_user` role, then activates the
+business. Company-administrator access requires a separate, audited platform
+assignment after approval. Retry of an older approval preserves its existing
+compatible membership rather than silently demoting it. The server withholds
+membership for a non-active business; interrupted approval can be retried
+without granting access to a pending business. Reservations are compensated
+when an account assignment fails. Inspect failed/unfinished admin audit records
+before manual repair.
 
 Privileged actions have actor-scoped audit records, with affected-account
 changes and their audit entries committed together. No secrets or notification
@@ -378,6 +418,63 @@ a company role never grants platform access. The business dashboard requires
 an active tenant context; authenticated users without one remain on their
 account and application-status pages.
 
+The Users directory is shared by platform and company administration, but its
+scope is always derived server-side. Platform administrators receive the
+audited cross-company view, including separate company and business-application
+tables. The company table is sourced from Business records rather than
+applicant accounts. Exact normalized-name matches are presented as possible
+duplicates during review but do not automatically block legitimate companies
+that share a name. Company
+administrators receive only users whose stored membership belongs to their
+active business and the one matching Business record. Company users and
+unassigned accounts cannot open the page or API. The client follows bounded
+Cosmos continuation pages, merges them by stable IDs and presents responsive
+tables grouped by stored business membership. Platform-administrator accounts
+are excluded from this company-user directory. Internal company usernames are
+not shown.
+Company users, cross-company platform users, business applicants and pending
+invitations all use the same responsive table presentation rather than
+separate card layouts. Empty pending or rejected business groups are omitted
+from the company-user accordions.
+
+Platform administrators can manage users across companies; company
+administrators can manage only users already belonging to their active company.
+Both may assign `company_user` or `company_admin`, pause, resume and delete
+within that scope. Platform roles and business-application decisions remain
+platform-only. Pausing stores the prior active or pending state, marks the
+account disabled, increments its authorization version and therefore
+invalidates existing sessions. Resuming restores the prior state. Deletion
+replaces the account with an anonymized tombstone, removes all roles and
+membership, releases the business membership reservation and invalidates
+sessions. Account lifecycle changes are audited. Administrators cannot pause or
+delete themselves, and the last active company administrator cannot be paused,
+deleted or demoted. Company administrators also cannot change their own role.
+Deleted tombstones and platform-administrator accounts are excluded from
+directory results and counts; empty unassigned groups are hidden.
+
+The platform Administration landing page contains navigation only. Its Users
+Companies and Company applications links open distinct anchored sections of
+the shared Users page. Business Settings is a navigation hub for the Account
+business profile and, for company administrators, tenant-scoped users and
+invitations.
+
+Protected page chrome presents identity from the server-validated Viewer rather
+than browser-supplied values. It shows the registered display name, all assigned
+company and platform roles, and the resolved active business name. Logout uses
+the existing session-revocation endpoint and redirects only after a valid
+server response. Approved application details are omitted from the account page
+once they duplicate the active-company header; pending or rejected applications
+remain visible. A rejected applicant can correct the business name and
+resubmit the same Business record for review; the operation requires the
+authenticated owning account and rejects membership or non-rejected states.
+Unassigned accounts are directed to request an invitation from the relevant
+company administrator.
+
+User-facing content and action links use the shared rounded blue button
+treatment. Structural navigation such as the product logo, workspace sidebar,
+signed-in identity link and accessibility skip link retains its purpose-specific
+styling.
+
 ## Implemented Business Setup
 
 Business documents retain the business GUID as both ID and partition key and
@@ -386,7 +483,9 @@ New registrations receive `Europe/London` and `GBP` defaults. The idempotent
 business-settings migration adds those fields to older documents only when
 missing; it does not overwrite configured values. Company administrators can
 update the business name, timezone and currency. Company users can read those
-settings but cannot update them.
+settings but cannot update them. The Business profile is shown only on the
+Account page. Company administrators create and manage invitations alongside
+the tenant-scoped user directory on the Users page.
 
 Business settings requests contain no tenant identifier. The server resolves
 the active tenant from the authenticated membership and uses a point read in
@@ -402,13 +501,35 @@ only a hash of its random secret. The acceptance link carries the business GUID,
 invitation ID and random secret; the identifiers route the point read but do not
 authorize acceptance.
 
-Invitation links expire after seven days and records have one-year retention.
-Postmark payloads are encrypted using the existing notification outbox. Only a
-verified authenticated account whose normalized email matches the invitation
-can accept. Acceptance reserves a unique internal company username, adds the
-membership, increments the account authorization version and invalidates older
-sessions. It can grant only `company_user`; company-administrator and platform
-roles remain separate privileged operations.
+Invitation links expire after seven days. Pending records have 30-day
+retention, while accepted or revoked records have 90-day retention.
+Postmark payloads are encrypted using the existing notification outbox. The
+link opens a registration form prefilled with the invited email. New accounts
+accept the invitation automatically when email verification succeeds; existing
+accounts accept it automatically after signing in through the preserved
+invitation link. Only a verified authenticated account whose normalized email
+matches the invitation can accept. Acceptance reserves a unique internal
+company username, adds the membership, increments the account authorization
+version and invalidates older sessions. It can grant only `company_user`;
+company-administrator and platform roles remain separate privileged operations.
+
+Company administrators may delete pending invitations in their own business
+partition. The server derives the partition from tenant context and derives the
+deterministic invitation ID from the normalized email; it accepts no tenant ID.
+Only pending invitations are returned to the company Users page; accepted
+records remain temporarily for audit history but are not shown.
+The partition batch deletes the invitation and correlated pending or failed
+notification records so a failed delivery cannot later be retried. A previously
+sent email cannot be recalled, but its link fails after the invitation record is
+deleted. Accepted invitations cannot be deleted through this operation and
+membership removal remains out of Stage 5 scope.
+
+If the account that previously accepted an invitation is later deleted, a
+company administrator may invite that email again. Registration atomically
+archives the anonymized deleted-account tombstone under its former user GUID,
+replaces the active account slot with a new least-privileged account and updates
+the email index. Active or non-deleted accepted accounts continue to block
+duplicate invitations.
 
 Membership assignment and invitation status updates span account and business
 partitions and therefore are not globally atomic. If membership succeeds before

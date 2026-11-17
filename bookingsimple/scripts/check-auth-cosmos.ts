@@ -25,6 +25,7 @@ import {
   throttleContainer,
 } from "../src/server/auth-storage";
 import {
+  acceptBusinessInvitation,
   listAdminData,
   replaceUserWithAdminAudit,
   runAdminAction,
@@ -37,8 +38,8 @@ import {
   resolveTenantContext,
 } from "../src/server/tenant-context";
 import {
-  acceptBusinessInvitation,
   createBusinessInvitation,
+  deleteBusinessInvitation,
   getBusinessSetup,
   updateBusinessSettings,
 } from "../src/server/business-service";
@@ -462,6 +463,49 @@ async function run() {
       403,
   );
 
+  currentCheck = "business-invitation-delete";
+  const wrongEmail = `wrong-${emailSuffix}`;
+  const originalDeleteFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+      if (String(url) !== "https://api.postmarkapp.com/email") {
+        return originalDeleteFetch(url, options);
+      }
+      return new Response("{}", { status: 503 });
+  };
+  try {
+      await expectStatus(
+        () =>
+          createBusinessInvitation(companyAdminRequest, {
+            email: wrongEmail,
+          }),
+        503,
+      );
+  } finally {
+      globalThis.fetch = originalDeleteFetch;
+  }
+  const wrongInvitationId = `invitation_${sha256(wrongEmail)}`;
+  assert.ok(
+      await readDocument(control, wrongInvitationId, tenantId),
+  );
+  await deleteBusinessInvitation(companyAdminRequest, {
+      email: wrongEmail,
+  });
+  assert.equal(
+      await readDocument(control, wrongInvitationId, tenantId),
+      null,
+  );
+  const retryableWrongEmailNotifications = await queryAllPages<{ id: string }>(
+      control,
+      "SELECT c.id FROM c WHERE c.partitionKey = @tenantId AND c.type = @type AND c.relatedId = @relatedId AND c.status != @sent",
+      [
+        { name: "@tenantId", value: tenantId },
+        { name: "@type", value: "notification" },
+        { name: "@relatedId", value: wrongInvitationId },
+        { name: "@sent", value: "sent" },
+      ],
+  );
+  assert.deepEqual(retryableWrongEmailNotifications, []);
+
   currentCheck = "remaining-auth-checks";
   const membershipAudits = await queryAllPages<{
     actorUserId: string;
@@ -738,7 +782,7 @@ async function run() {
   );
 
   console.log(
-    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, active tenant-context resolution, cross-tenant denial, tenant transfer denial, business settings authorization, invitation acceptance, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
+    "Synthetic Cosmos auth checks passed: duplicate email, bootstrap lock, password-only admin role grant, active tenant-context resolution, cross-tenant denial, tenant transfer denial, business settings authorization, invitation acceptance and deletion, username uniqueness, session invalidation, atomic target audits, directory-read audit, cross-session MFA exhaustion, and one-time CAS.",
   );
 }
 

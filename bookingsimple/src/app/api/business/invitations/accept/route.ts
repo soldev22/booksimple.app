@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseMutationJson } from "@/server/api-request";
-import { acceptBusinessInvitation } from "@/server/business-service";
+import { acceptBusinessInvitation } from "@/server/auth-service";
 import { parseAcceptInvitationInput } from "@/server/business-validation";
 import { getSafeError } from "@/server/auth-service";
 

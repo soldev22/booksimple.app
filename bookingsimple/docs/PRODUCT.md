@@ -201,6 +201,12 @@ Customer records may be created through:
 - a booking,
 - future integrations.
 
+During initial Customer management, active company users can create, search,
+view, edit and archive Customer records for their own business. Permanent
+erasure of Customer personal information is restricted to company
+administrators and preserves only the anonymous identity needed by future
+records.
+
 ---
 
 # 8. Conversations
@@ -421,8 +427,14 @@ business.
 
 New users cannot access a workspace until assigned an appropriate role.
 Pending applicants can submit and check their business application. Platform
-administrators approve businesses and assign company administrators. Only an
-existing platform administrator can grant the platform-administrator role.
+administrators approve businesses, which grants the applicant the
+least-privileged company-user role by default. A platform administrator must
+separately elevate a user to company administrator. Only an existing platform
+administrator can grant the platform-administrator role. Rejected applicants
+can correct the proposed business name and resubmit the same application.
+Platform review separates actual company records from applications and warns
+when another company has the same normalized name; the reviewer explicitly
+decides whether the application represents a separate company.
 
 Detailed permissions, account recovery, and administrator provisioning must
 be designed before implementation.

@@ -23,7 +23,8 @@ export type UserDocument = AuthDocument & {
   userId: string;
   email: string;
   name: string;
-  status: "pending" | "active" | "disabled";
+  status: "pending" | "active" | "disabled" | "deleted";
+  pausedStatus?: "pending" | "active";
   passwordHash: string;
   emailVerified: boolean;
   platformAdmin: boolean;
@@ -45,6 +46,7 @@ export type UserDocument = AuthDocument & {
   pendingMfaSecret?: string;
   lastTotpStep?: number;
   backupCodeHashes?: string[];
+  deletedAt?: string;
 };
 
 export type SessionDocument = AuthDocument & {
@@ -76,6 +78,7 @@ export function toUserView(user: UserDocument): UserView {
     ...(user.application
       ? {
           application: {
+            businessId: user.application.businessId,
             businessName: user.application.businessName,
             status: user.application.status,
           },
