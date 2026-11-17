@@ -1313,16 +1313,248 @@ a:focus-visible {
   border-top-color: #e1a6a6;
 }
 
+.conversation-create-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.conversation-message-field {
+  grid-column: span 2;
+}
+
+.conversation-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.conversation-list {
+  display: grid;
+  gap: 14px;
+}
+
+.conversation-list-item {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.conversation-list-item p {
+  margin: 12px 0;
+  color: var(--ink-muted);
+}
+
+.conversation-list-heading,
+.conversation-list-footer,
+.conversation-detail-heading,
+.conversation-section-heading,
+.conversation-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conversation-list-heading h3,
+.conversation-detail-heading h2,
+.conversation-section-heading h2 {
+  margin: 0;
+}
+
+.conversation-list-heading time,
+.conversation-list-footer,
+.conversation-section-heading span,
+.conversation-message-meta time {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.conversation-channel,
+.conversation-unresolved,
+.conversation-resolved {
+  display: inline-flex;
+  width: fit-content;
+  margin: 6px 8px 0 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.conversation-channel {
+  color: #4138ae;
+  background: var(--accent-soft);
+}
+
+.conversation-unresolved {
+  color: #704600;
+  background: #fff1cf;
+}
+
+.conversation-resolved {
+  color: #176747;
+  background: #e6f7ef;
+}
+
+.conversation-detail-heading {
+  margin: 20px 0;
+}
+
+.conversation-detail-heading p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+}
+
+.conversation-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.conversation-thread,
+.conversation-resolution {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.conversation-resolution {
+  position: sticky;
+  top: 20px;
+}
+
+.conversation-resolution > h2 {
+  margin-top: 0;
+}
+
+.conversation-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+  margin: 20px 0;
+  list-style: none;
+}
+
+.conversation-message {
+  width: min(82%, 620px);
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.conversation-message-outbound {
+  align-self: flex-end;
+  border-color: #cbc7ff;
+  background: var(--accent-soft);
+}
+
+.conversation-message p {
+  margin: 10px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-delivery,
+.conversation-local-note {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.conversation-reply-form,
+.conversation-customer-search,
+.conversation-customer-create {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.conversation-reply-form .account-button,
+.conversation-customer-search .account-button,
+.conversation-customer-create .account-button {
+  width: fit-content;
+}
+
+.conversation-resolution-section,
+.conversation-match-panel {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.conversation-resolution-section h3,
+.conversation-match-panel h3 {
+  margin-top: 0;
+}
+
+.conversation-customer-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-customer-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.conversation-customer-choice div {
+  display: grid;
+  gap: 4px;
+}
+
+.conversation-customer-choice span {
+  color: var(--ink-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .customer-form-grid,
   .customer-search,
   .service-form-grid,
-  .service-search {
+  .service-search,
+  .conversation-create-form,
+  .conversation-search,
+  .conversation-detail-layout {
     grid-template-columns: 1fr;
   }
 
-  .service-description-field {
+  .service-description-field,
+  .conversation-message-field {
     grid-column: auto;
+  }
+
+  .conversation-resolution {
+    position: static;
+  }
+
+  .conversation-message {
+    width: 94%;
   }
 }
 

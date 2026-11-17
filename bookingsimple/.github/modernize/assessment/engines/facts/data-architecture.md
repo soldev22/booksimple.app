@@ -1,9 +1,9 @@
 # Data Architecture & Persistence Layer
 
-BookSimple persists 14 authentication, company-control and operational record
-types plus Customer and Service business domains in Azure Cosmos DB for NoSQL
-through the TypeScript SDK without an ORM. Future business domains use
-separately approved containers.
+BookSimple persists authentication, company-control and operational records
+plus Customer, Service and Conversation business domains in Azure Cosmos DB
+for NoSQL through the TypeScript SDK without an ORM. Future business domains
+use separately approved containers.
 
 ## Database Configuration
 
@@ -13,6 +13,7 @@ separately approved containers.
 | Authentication and company control | Azure Cosmos DB for NoSQL | Vercel production target | Azure Cosmos JavaScript SDK | Environment-supplied HTTPS endpoint using Vercel OIDC and Microsoft Entra ID | Reviewed TypeScript provisioning and migration scripts |
 | Customer domain | Azure Cosmos DB for NoSQL | Local and Vercel targets | Azure Cosmos JavaScript SDK | Existing singleton Cosmos client and dedicated `customers` container | Reviewed TypeScript provisioning script |
 | Service domain | Azure Cosmos DB for NoSQL | Local and Vercel targets | Azure Cosmos JavaScript SDK | Existing singleton Cosmos client and dedicated `services` container | Reviewed TypeScript provisioning script |
+| Conversation domain | Azure Cosmos DB for NoSQL | Local and Vercel targets | Azure Cosmos JavaScript SDK | Singleton client with hierarchical `conversations` and tenant-partitioned `channel-identities` containers | Reviewed TypeScript provisioning script |
 
 Authentication containers are provisioned with TTL enabled and no default
 expiry. Each expiring document declares its own retention. No seed data or ORM
@@ -28,6 +29,7 @@ schema generation is used.
 | Platform administration | AdminAudit, DeletedUserTombstone, BootstrapLock | None; direct Cosmos SDK | None | Audit and security-control records |
 | Customer management | Customer | None; direct Cosmos SDK | None | Dedicated `/tenantId` container with no default TTL |
 | Service management | Service | None; direct Cosmos SDK | None | Dedicated `/tenantId` container with no default TTL |
+| Conversation management | Conversation, Message, ChannelIdentity | None; direct Cosmos SDK | None | Conversation and Message share `/tenantId`, `/conversationId`; identities use `/tenantId` |
 
 ## Entity Model
 
@@ -39,6 +41,12 @@ erDiagram
     Business ||--o{ MembershipReservation : "owns"
     Business ||--o{ Customer : "owns"
     Business ||--o{ Service : "offers"
+    Business ||--o{ Conversation : "owns"
+    Business ||--o{ ChannelIdentity : "owns"
+    Customer |o--o{ Conversation : "may identify"
+    Customer |o--o{ ChannelIdentity : "may resolve"
+    ChannelIdentity ||--|| Conversation : "routes to"
+    Conversation ||--|{ Message : "contains"
     User ||--o{ Session : "opens"
     User ||--o{ AuthToken : "receives"
     User ||--o{ Notification : "receives"
@@ -130,6 +138,38 @@ erDiagram
         string createdAt
         string updatedAt
     }
+    ChannelIdentity {
+        string id PK
+        string tenantId FK
+        string customerId FK
+        string conversationId FK
+        string channel
+        string normalizedAddress
+        string displayLabel
+        string updatedAt
+    }
+    Conversation {
+        string id PK
+        string tenantId FK
+        string customerId FK
+        string channelIdentityId FK
+        string channel
+        string contactLabel
+        int messageCount
+        string lastMessageAt
+        string updatedAt
+    }
+    Message {
+        string id PK
+        string tenantId FK
+        string conversationId FK
+        string customerId FK
+        string direction
+        string channel
+        string body
+        string deliveryStatus
+        string createdAt
+    }
 ```
 
 EmailIndex, RateLimit, DeletedUserTombstone and BootstrapLock are technical
@@ -145,6 +185,7 @@ control records omitted from the relationship diagram to keep it readable.
 | Business setup | `business-service.ts` | `getBusinessSetup`, `updateBusinessSettings`, invitation operations | Tenant-scoped business and invitation persistence |
 | Customer management | `customer-storage.ts` and `customer-service.ts` | `queryCustomerPage`, `getCustomer`, `createCustomer`, `updateCustomer`, `archiveCustomer`, `eraseCustomer` | Single-partition pagination, point reads, ETag writes, duplicate warnings and lifecycle operations |
 | Service management | `service-storage.ts` and `service-service.ts` | `queryServicePage`, `getService`, `createService`, `updateService`, `setServiceActive` | Single-partition pagination, point reads, ETag writes and active lifecycle operations |
+| Conversation management | `conversation-storage.ts` and `conversation-service.ts` | `queryConversationPage`, `getConversationDetailsForContext`, `createConversation`, `addConversationMessage`, `linkConversationCustomer` | Tenant-key listings, hierarchical point reads, transactional message and summary writes, exact matching and guarded Customer resolution |
 | Retention governance | `data-retention.ts` and `migrate-data-retention.ts` | `retentionSecondsFor` and dry-run migration | Central retention mapping and controlled migration |
 
 ## Caching Strategy
@@ -157,7 +198,8 @@ second-level or distributed cache is currently justified by measured traffic.
 ## Data Ownership Boundaries
 
 All current records share one Cosmos database but are separated into
-authentication control, sessions, throttling, Customer and Service containers.
+authentication control, sessions, throttling, Customer, Service,
+Conversation and channel-identity containers.
 `auth-control` co-locates related account and business-control records for
 point reads and same-partition transactions; it is not approved for Customers,
 Bookings, Messages or Payments.
@@ -176,6 +218,14 @@ The implemented Service container also uses `/tenantId`. Prices use safe
 integer minor units with explicit currency, and inactive records remain durable
 so future Booking references can retain stable Service IDs.
 
+The `conversations` container uses hierarchical `/tenantId` and
+`/conversationId` paths. Tenant listings constrain the first path through an
+equality predicate, while one Conversation and its Messages use the complete
+key for point reads, scoped queries and transactional batches.
+`channel-identities` uses `/tenantId` and a deterministic channel-address ID
+for exact point matching. Customer references are hydrated and authorized by
+the service layer; cross-container linking uses ETags and compensating rollback.
+
 ### Data Classification & Sensitivity
 
 | Entity | Sensitive Fields | Classification | Controls in Place |
@@ -191,6 +241,9 @@ so future Booking references can retain stable Service IDs.
 | DeletedUserTombstone | Former user ID and timestamps | Pseudonymous identifier | Name and email removed; one-year TTL |
 | Customer | Name, email and phone | PII | Server-resolved tenant partition, archive, admin-only anonymization and no PCI or PHI |
 | Service | Name, description, duration and price | Business data; possible incidental PII in free text | Server-resolved tenant partition, no payment-card data and durable deactivation |
+| ChannelIdentity | Normalized email, phone or provider-neutral address; display label | PII | Deterministic ID, server-resolved tenant partition and no provider credentials |
+| Conversation | Contact label, optional Customer ID and last-message preview | PII and communication metadata | Hierarchical tenant partition, bounded preview, server authorization and Cosmos encryption at rest |
+| Message | Message body, direction, channel and optional Customer ID | PII and sensitive communication content | Full tenant and Conversation partition key, 4,000-character limit, server authorization and Cosmos encryption at rest |
 | RateLimit | Hashed scope and count | None directly | Hashed keys and short TTL |
 | BootstrapLock | User ID and setup-token hash | Security | Hashed setup token and permanent single-use control |
 

@@ -232,8 +232,10 @@ estimates do not establish document sizes, audit-event volume or data growth.
 
 Database: `booksimple`. Authentication containers use the immutable
 `/partitionKey` path with Hash partitioning and `defaultTtl=-1` (TTL enabled;
-documents expire only when they specify a TTL). Customer and Service containers
-use the immutable `/tenantId` path and have no default TTL.
+documents expire only when they specify a TTL). Customer, Service and channel
+identity containers use the immutable `/tenantId` path. Conversations use the
+hierarchical `/tenantId`, `/conversationId` key. Business-domain containers
+have no default TTL.
 
 | Container | Partition derivation | Records and retention |
 | --- | --- | --- |
@@ -242,6 +244,8 @@ use the immutable `/tenantId` path and have no default TTL.
 | `auth-throttles` | Hash of rate-limit scope and protected account key | Expiring, ETag-protected counters; no in-memory-only abuse protection |
 | `customers` | Server-resolved active Business GUID in `/tenantId` | Active, archived and anonymized Customer records; durable with no automatic expiry |
 | `services` | Server-resolved active Business GUID in `/tenantId` | Active and inactive bookable Service records; durable with no automatic expiry |
+| `conversations` | Server-resolved Business GUID followed by Conversation GUID in a version 2 MultiHash key | Conversation summaries and separate Message documents; durable synthetic Stage 8 data with no automatic expiry |
+| `channel-identities` | Server-resolved active Business GUID in `/tenantId` | Deterministic provider-neutral contact identities and optional Customer links; durable with no automatic expiry |
 
 The plain-language record inventory, sensitivity classifications and retention
 matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
@@ -316,6 +320,35 @@ changes use Cosmos ETags to reject conflicting writes.
 Service names are not globally unique. Separate businesses can independently
 create identically named Services, but tenant partitioning and authorization
 prevent either business from listing or accessing the other's records.
+
+## Implemented Conversation Management
+
+The provider-neutral Inbox uses the dedicated `conversations` container with
+hierarchical partition paths `/tenantId` and `/conversationId`. The first level
+is always the authenticated Business GUID. Tenant Conversation listings include
+an equality predicate on that key; detail reads and Message queries use the
+complete hierarchical key. Browser tenant IDs are never accepted.
+
+One Conversation summary and its separate, unbounded Message documents share a
+full logical partition. Appending a Message creates the Message and replaces
+the ETag-guarded summary in one transactional batch. The summary keeps only a
+bounded preview, count, direction and timestamp. Message bodies are limited to
+4,000 characters. Inbound development messages use `RECEIVED`; outbound Stage
+8 replies use `LOCAL_ONLY` and the UI explicitly states they were not sent.
+
+`channel-identities` provides one deterministic identity per tenant, channel
+and normalized address. Email is lowercase; SMS and WhatsApp use canonical
+phone values. A Conversation can remain unresolved with no `customerId`.
+Matching checks the identity first, then exact tenant-scoped Customer email or
+phone values. One exact match links during creation, several exact matches
+require staff selection, and no match offers Customer creation. Names are
+display-only and never drive automatic linking.
+
+All Conversation and resolution operations derive tenant ownership from the
+active membership. Linking performs a same-tenant Customer point read and
+rejects archived, erased or cross-tenant records. Identity and Conversation
+updates use ETags, with explicit rollback if the second cross-container update
+fails. External channel adapters and real delivery are outside Stage 8.
 
 Approval spans account and business partitions, so it is not globally atomic.
 For a new membership it reserves a generated member username, records the

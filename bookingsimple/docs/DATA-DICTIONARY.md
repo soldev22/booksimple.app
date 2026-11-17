@@ -85,7 +85,8 @@ Major business domains use dedicated containers rather than expanding
 | --- | --- | --- | --- |
 | Customers | `customers` | `/tenantId` | Implemented and provisioned |
 | Services | `services` | `/tenantId` | Approved Stage 7 design |
-| Conversations and messages | To be approved during Stage 8 | Expected conversation-oriented partitioning | Not designed |
+| Conversations and messages | `conversations` | `/tenantId`, then `/conversationId` | Approved Stage 8 design |
+| Channel identities | `channel-identities` | `/tenantId` | Approved Stage 8 matching design |
 | Bookings | To be approved during Stage 9 | Expected tenant-oriented access with deliberate growth analysis | Not designed |
 | Payments | To be approved during Stage 11 | Provider-safe internal records only | Not designed |
 
@@ -201,6 +202,119 @@ Service decisions:
 
 The server derives `tenantId` from authenticated membership for every Service
 operation. No Service API accepts a browser tenant ID as proof of ownership.
+
+## Approved Conversation Document
+
+Stage 8 uses a dedicated `conversations` container with hierarchical partition
+paths `/tenantId` and `/conversationId`.
+
+```json
+{
+  "id": "conversation-guid",
+  "tenantId": "business-guid",
+  "conversationId": "conversation-guid",
+  "type": "conversation",
+  "schemaVersion": 1,
+  "channelIdentityId": "identity-hash",
+  "customerId": "optional-customer-guid",
+  "contactLabel": "Alex or channel address",
+  "channel": "WHATSAPP",
+  "messageCount": 3,
+  "lastMessagePreview": "Is Friday available?",
+  "lastMessageDirection": "INBOUND",
+  "lastMessageAt": "2026-11-17T17:00:00.000Z",
+  "createdAt": "2026-11-17T16:55:00.000Z",
+  "updatedAt": "2026-11-17T17:00:00.000Z"
+}
+```
+
+Conversation decisions:
+
+- `tenantId` is the authorization boundary and first hierarchical key level.
+- `conversationId` is the second key level and groups one Conversation with its
+  unbounded Message documents.
+- `customerId` is optional while a channel contact is unresolved.
+- The Conversation stores only a bounded last-message preview and summary
+  fields needed by the inbox; message history is not embedded.
+- All active company users can view and work with Conversations in their own
+  tenant.
+- Stage 8 records have no default TTL. Production communication retention and
+  export policy must be approved before real provider data is connected.
+
+## Approved Message Document
+
+```json
+{
+  "id": "message-guid",
+  "tenantId": "business-guid",
+  "conversationId": "conversation-guid",
+  "type": "message",
+  "schemaVersion": 1,
+  "customerId": "optional-customer-guid",
+  "direction": "INBOUND",
+  "channel": "WHATSAPP",
+  "body": "Is Friday available?",
+  "deliveryStatus": "RECEIVED",
+  "createdAt": "2026-11-17T17:00:00.000Z"
+}
+```
+
+Message decisions:
+
+- Messages are separate documents because history is unbounded.
+- Direction is `INBOUND` or `OUTBOUND`.
+- Channel is `WHATSAPP`, `FACEBOOK`, `SMS` or `EMAIL`.
+- Development replies use `LOCAL_ONLY`; the UI must not imply external
+  delivery.
+- Message creation and Conversation summary replacement use one transactional
+  batch inside the full hierarchical partition.
+- Message bodies are sensitive communication content. They are protected by
+  tenant authorization and Cosmos encryption at rest, but not field encrypted.
+  Synthetic data only is allowed until production retention and security review.
+
+## Approved Channel Identity Document
+
+Stage 8 uses `channel-identities`, partitioned by `/tenantId`, for exact
+tenant-local contact matching.
+
+```json
+{
+  "id": "identity-hash",
+  "tenantId": "business-guid",
+  "type": "channel-identity",
+  "schemaVersion": 1,
+  "channel": "WHATSAPP",
+  "normalizedAddress": "+441234567890",
+  "displayLabel": "+44 1234 567890",
+  "conversationId": "conversation-guid",
+  "customerId": "optional-customer-guid",
+  "createdAt": "2026-11-17T16:55:00.000Z",
+  "updatedAt": "2026-11-17T16:55:00.000Z"
+}
+```
+
+Channel identity decisions:
+
+- The ID is deterministic from channel plus normalized address, allowing one
+  current identity per channel address and tenant without storing the address
+  in the partition key.
+- Email is lowercase and trimmed; WhatsApp and SMS use canonical phone values;
+  Facebook uses a bounded provider-neutral identifier during local development.
+- Exactly one Customer match may link automatically. Multiple exact Customer
+  matches remain unresolved for staff selection.
+- No match offers Customer creation with known fields prefilled.
+- Name similarity never links a Customer automatically.
+
+## Conversation Access Patterns
+
+| Operation | Partition scope |
+| --- | --- |
+| List tenant Conversations | Hierarchical prefix containing `tenantId` |
+| Read a Conversation | Full key containing `tenantId` and `conversationId` |
+| Read or append Messages | Full key containing `tenantId` and `conversationId` |
+| Match a channel identity | Point read using deterministic ID and server-resolved `tenantId` |
+| Resolve to a Customer | Tenant-scoped Customer point read and guarded cross-container updates |
+| Platform-wide message search | Not part of Stage 8 |
 
 ## Governance Rule
 

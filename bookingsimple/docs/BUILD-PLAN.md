@@ -661,6 +661,8 @@ STOP after completion.
 
 # STAGE 8 — Conversation Domain
 
+Status: COMPLETE
+
 ## Objective
 
 Create the provider-neutral internal communication model before connecting external messaging providers.
@@ -674,6 +676,30 @@ Conversation
 Message
 
 CustomerChannelIdentity if required by the agreed schema.
+
+## Approved Customer Identity Flow
+
+- A Conversation may start with an existing Customer or an unresolved channel
+  contact. Businesses do not have to pre-create every Customer.
+- An unresolved contact does not automatically become a full Customer record.
+- Staff can link the Conversation to an existing Customer or create a Customer
+  from the Conversation when the person's identity is understood.
+- A verified exact channel identity may support automatic matching later.
+  Similar names, phone fragments or other weak matches must never silently merge
+  Customer records.
+- Matching is always scoped to the active tenant. The system tries exact
+  verified channel identity first, then exact normalized email or phone.
+- If exactly one Customer matches, the Conversation can be linked
+  automatically. If several Customers share the exact contact value, staff must
+  choose the correct Customer or keep the contact unresolved.
+- If no Customer matches, the inbox offers to create a new Customer with the
+  known contact details prefilled. Creation is never forced.
+- Customer names may be displayed to help staff review exact-match candidates,
+  but name similarity alone never links records automatically.
+- A Conversation may remain unresolved, but creating a Booking from it requires
+  a resolved Customer.
+- Stage 8 therefore includes the minimum provider-neutral channel-identity
+  record needed to represent and later resolve an inbound contact.
 
 ## Message Concepts
 
@@ -714,6 +740,23 @@ Required concepts:
 Replies may initially be stored locally in the database rather than sent to an external provider.
 
 This proves the internal domain first.
+
+Implemented with a dedicated hierarchical `conversations` container using
+`/tenantId` then `/conversationId`, plus a tenant-partitioned
+`channel-identities` container. Conversation summaries and separate Message
+documents share the full hierarchical partition, so appending a Message and
+updating the inbox preview occurs in one transactional batch.
+
+The Inbox supports unresolved contacts, exact tenant-scoped Customer matching,
+ambiguous-match selection, existing-Customer search, Customer creation with
+known contact details prefilled, and local development messages. Outbound
+messages are visibly marked `LOCAL_ONLY` and no external provider APIs are
+connected.
+
+Runtime validation covers tenant-isolated lists, URL and API denial across
+tenants, cross-tenant Customer-link denial, exact and ambiguous matching,
+no-match creation and linking, local-only delivery, and atomic Conversation
+summary updates.
 
 ## Completion Criteria
 

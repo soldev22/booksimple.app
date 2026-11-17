@@ -64,7 +64,8 @@ External messaging and payment providers are isolated behind provider adapters.
 
 The core application must not depend directly on provider-specific implementations.
 
-Registration uses the reviewed auth containers described in
+Registration and the implemented Customer, Service and Conversation domains
+use the reviewed containers described in
 [ARCHITECTURE.md](docs/ARCHITECTURE.md); future business-domain containers still
 require separate design approval. The initial connectivity plan uses the public Cosmos DB endpoint with
 Microsoft Entra authentication for deployment and an explicitly approved
@@ -104,7 +105,7 @@ The Azure Identity SDK remains a native server dependency via
 from being bundled as application modules.
 
 The request-time client does not create databases or containers. The explicit
-provisioning script creates and reads back the reviewed registration containers.
+provisioning script creates and reads back the reviewed containers.
 Use synthetic data only until deployment identity, security and environment
 separation are verified.
 
@@ -146,13 +147,15 @@ and must be reassessed before using real data or deploying to production.
    messages and email contents are not logged. Restart the development server
    after changing environment settings, then request a resend at `/verify`.
 4. The `booksimple` database with `auth-control`, `auth-sessions`,
-   `auth-throttles` and the tenant-partitioned `customers` and `services`
-   containers has been provisioned in the approved Azure account.
+   `auth-throttles`, `customers`, `services`, hierarchical `conversations` and
+   tenant-partitioned `channel-identities` containers has been provisioned in
+   the approved Azure account.
    To provision or verify another approved target, set
-   `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` and run:
+   `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` in `.env.local` or the
+   process environment and run:
 
    ```powershell
-   node --env-file=.env.local --conditions=react-server --import tsx scripts\provision-auth.ts
+   npm run provision:data
    ```
 
    This requires an authorized Azure management-plane identity. Normal
@@ -195,7 +198,8 @@ node --env-file=.env.local --conditions=react-server --import tsx scripts\retry-
 ```
 
 These standalone scripts do not automatically load `.env.local`; the commands
-above do so explicitly. Production can instead inject environment variables.
+above do so explicitly, while the provisioning aliases load it when present.
+Production can instead inject environment variables.
 No real email delivery, deployed Vercel federation or initial administrator
 bootstrap has been verified or performed as part of implementation.
 

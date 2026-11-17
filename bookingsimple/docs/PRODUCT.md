@@ -201,6 +201,18 @@ Customer records may be created through:
 - a booking,
 - future integrations.
 
+A business does not need to pre-create every Customer before communication can
+begin. A Conversation may initially represent an unresolved channel contact.
+Staff can later link that Conversation to an existing Customer or create a new
+Customer from it. Weak or ambiguous similarities must never silently merge
+Customer records, and a Booking requires a resolved Customer identity.
+
+Customer matching is tenant-scoped. The system may automatically link a
+Conversation only when one Customer has an exact verified channel identity or
+exact normalized email or phone. Multiple exact matches require staff review.
+When no Customer matches, the inbox offers to create one with known contact
+details prefilled. Name similarity alone never creates or links a Customer.
+
 During initial Customer management, active company users can create, search,
 view, edit and archive Customer records for their own business. Permanent
 erasure of Customer personal information is restricted to company
@@ -235,6 +247,13 @@ Direction must distinguish between:
 - outbound
 
 Core conversation behaviour must remain independent of individual communication providers.
+
+The implemented first Inbox allows communication to begin with either a linked
+Customer or an unresolved contact. Exact email and phone matching remains
+tenant-scoped; ambiguous matches require staff selection, and no match offers a
+prefilled Customer creation form. Stage 8 messages are local development
+records only. Outbound replies are clearly marked local-only and are not sent
+through WhatsApp, Meta, SMS or email.
 
 ---
 

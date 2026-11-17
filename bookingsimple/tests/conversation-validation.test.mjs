@@ -1,0 +1,115 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  parseConversationId,
+  parseConversationListInput,
+  parseCreateConversationInput,
+  parseCreateMessageInput,
+  parseLinkCustomerInput,
+  parseMessageListInput,
+} from "../src/server/conversation-validation.ts";
+
+test("Conversation input normalizes channel addresses", () => {
+  assert.deepEqual(
+    parseCreateConversationInput({
+      channel: "EMAIL",
+      contactValue: " Alex@Example.com ",
+      contactLabel: " Alex ",
+      initialMessage: " Hello ",
+      direction: "INBOUND",
+    }),
+    {
+      channel: "EMAIL",
+      normalizedContact: "alex@example.com",
+      contactLabel: "Alex",
+      initialMessage: "Hello",
+      direction: "INBOUND",
+    },
+  );
+  assert.deepEqual(
+    parseCreateConversationInput({
+      channel: "WHATSAPP",
+      contactValue: "+44 (7700) 900123",
+      contactLabel: "",
+      initialMessage: "Availability?",
+      direction: "OUTBOUND",
+    }),
+    {
+      channel: "WHATSAPP",
+      normalizedContact: "+447700900123",
+      contactLabel: "+44 (7700) 900123",
+      initialMessage: "Availability?",
+      direction: "OUTBOUND",
+    },
+  );
+});
+
+test("Conversation input is strict and validates channel-specific addresses", () => {
+  const base = {
+    channel: "EMAIL",
+    contactValue: "alex@example.com",
+    initialMessage: "Hello",
+    direction: "INBOUND",
+  };
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
+      tenantId: "11111111-1111-4111-8111-111111111111",
+    }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({ ...base, contactValue: "not-an-email" }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
+      channel: "SMS",
+      contactValue: "123",
+    }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
+      initialMessage: "x".repeat(4_001),
+    }),
+  );
+});
+
+test("Message, linking and paging inputs are strictly validated", () => {
+  assert.deepEqual(
+    parseCreateMessageInput({ body: " Reply ", direction: "OUTBOUND" }),
+    { body: "Reply", direction: "OUTBOUND" },
+  );
+  assert.throws(() =>
+    parseCreateMessageInput({
+      body: "Reply",
+      direction: "OUTBOUND",
+      deliveryStatus: "DELIVERED",
+    }),
+  );
+  const id = "11111111-1111-4111-8111-111111111111";
+  assert.equal(parseConversationId(id), id);
+  assert.deepEqual(parseLinkCustomerInput({ customerId: id }), {
+    customerId: id,
+  });
+  assert.throws(() => parseLinkCustomerInput({ customerId: id, tenantId: id }));
+  assert.deepEqual(
+    parseConversationListInput(
+      new URLSearchParams({ search: " alex ", pageSize: "25" }),
+    ),
+    {
+      search: "alex",
+      continuationToken: undefined,
+      pageSize: 25,
+    },
+  );
+  assert.deepEqual(parseMessageListInput(new URLSearchParams()), {
+    messageContinuationToken: undefined,
+    messagePageSize: 50,
+  });
+  assert.throws(() =>
+    parseMessageListInput(
+      new URLSearchParams({ messagePageSize: "101" }),
+    ),
+  );
+});

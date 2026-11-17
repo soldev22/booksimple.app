@@ -7,26 +7,52 @@ import {
 } from "../src/server/auth-storage";
 import { CUSTOMER_CONTAINER_ID } from "../src/server/customer-types";
 import { SERVICE_CONTAINER_ID } from "../src/server/service-types";
+import {
+  CHANNEL_IDENTITY_CONTAINER_ID,
+  CONVERSATION_CONTAINER_ID,
+} from "../src/server/conversation-types";
 
 const API_VERSION = "2024-05-15";
 const MANAGEMENT_ENDPOINT = "https://management.azure.com";
-const containerDefinitions = [
+type ContainerDefinition = {
+  id: string;
+  partitionKeyPaths: string[];
+  partitionKeyKind: "Hash" | "MultiHash";
+  partitionKeyVersion?: 2;
+  defaultTtl?: number;
+};
+
+const containerDefinitions: ContainerDefinition[] = [
   ...[
     AUTH_CONTROL_CONTAINER_ID,
     AUTH_SESSIONS_CONTAINER_ID,
     AUTH_THROTTLES_CONTAINER_ID,
   ].map((id) => ({
     id,
-    partitionKeyPath: "/partitionKey",
+    partitionKeyPaths: ["/partitionKey"],
+    partitionKeyKind: "Hash" as const,
     defaultTtl: -1,
   })),
   {
     id: CUSTOMER_CONTAINER_ID,
-    partitionKeyPath: "/tenantId",
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
   },
   {
     id: SERVICE_CONTAINER_ID,
-    partitionKeyPath: "/tenantId",
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
+  },
+  {
+    id: CONVERSATION_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId", "/conversationId"],
+    partitionKeyKind: "MultiHash",
+    partitionKeyVersion: 2,
+  },
+  {
+    id: CHANNEL_IDENTITY_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
   },
 ];
 
@@ -148,15 +174,19 @@ function verifyContainer(
 ): void {
   const definition = getProperties(resource);
   const partitionKey = definition?.partitionKey as
-    | { paths?: unknown; kind?: unknown }
+    | { paths?: unknown; kind?: unknown; version?: unknown }
     | undefined;
   if (
     resource.name !== expected.id ||
     definition?.id !== expected.id ||
     !Array.isArray(partitionKey?.paths) ||
-    partitionKey.paths.length !== 1 ||
-    partitionKey.paths[0] !== expected.partitionKeyPath ||
-    partitionKey.kind !== "Hash" ||
+    partitionKey.paths.length !== expected.partitionKeyPaths.length ||
+    partitionKey.paths.some(
+      (path, index) => path !== expected.partitionKeyPaths[index],
+    ) ||
+    partitionKey.kind !== expected.partitionKeyKind ||
+    (expected.partitionKeyVersion !== undefined &&
+      partitionKey.version !== expected.partitionKeyVersion) ||
     ("defaultTtl" in expected
       ? definition?.defaultTtl !== expected.defaultTtl
       : definition?.defaultTtl !== undefined)
@@ -200,8 +230,11 @@ async function main(): Promise<void> {
           resource: {
             id: definition.id,
             partitionKey: {
-              paths: [definition.partitionKeyPath],
-              kind: "Hash",
+              paths: definition.partitionKeyPaths,
+              kind: definition.partitionKeyKind,
+              ...(definition.partitionKeyVersion
+                ? { version: definition.partitionKeyVersion }
+                : {}),
             },
             ...("defaultTtl" in definition
               ? { defaultTtl: definition.defaultTtl }
@@ -213,7 +246,7 @@ async function main(): Promise<void> {
     );
     verifyContainer(resource, definition);
     console.log(
-      `Verified ${AUTH_DATABASE_ID}/${definition.id} (${definition.partitionKeyPath}${"defaultTtl" in definition ? ", TTL enabled" : ""}).`,
+      `Verified ${AUTH_DATABASE_ID}/${definition.id} (${definition.partitionKeyPaths.join(" + ")}${"defaultTtl" in definition ? ", TTL enabled" : ""}).`,
     );
   }
 }

@@ -20,7 +20,7 @@ type NavigationItem = {
 
 const navigationItems: NavigationItem[] = [
   { label: "Dashboard", icon: "dashboard", active: true },
-  { label: "Inbox", icon: "inbox" },
+  { label: "Inbox", icon: "inbox", href: "/inbox" },
   { label: "Customers", icon: "customers", href: "/customers" },
   { label: "Bookings", icon: "bookings" },
   { label: "Services", icon: "services", href: "/services" },
@@ -121,7 +121,7 @@ function Navigation() {
 
 const dashboardMetrics = [
   { label: "Today's bookings", detail: "Booking tools are coming later" },
-  { label: "Open conversations", detail: "Inbox tools are coming later" },
+  { label: "Open conversations", detail: "Manage the unified Inbox" },
   { label: "Customers", detail: "Manage customer records" },
   { label: "Services", detail: "Manage bookable Services" },
 ];
