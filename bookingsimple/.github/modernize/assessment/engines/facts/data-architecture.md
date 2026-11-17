@@ -1,9 +1,9 @@
 # Data Architecture & Persistence Layer
 
 BookSimple persists 14 authentication, company-control and operational record
-types plus the Customer business domain in Azure Cosmos DB for NoSQL through
-the TypeScript SDK without an ORM. Future business domains use separately
-approved containers.
+types plus Customer and Service business domains in Azure Cosmos DB for NoSQL
+through the TypeScript SDK without an ORM. Future business domains use
+separately approved containers.
 
 ## Database Configuration
 
@@ -12,6 +12,7 @@ approved containers.
 | Authentication and company control | Azure Cosmos DB for NoSQL | Local development | Azure Cosmos JavaScript SDK | Environment-supplied HTTPS endpoint using a local key or Azure CLI identity | Reviewed TypeScript provisioning and migration scripts |
 | Authentication and company control | Azure Cosmos DB for NoSQL | Vercel production target | Azure Cosmos JavaScript SDK | Environment-supplied HTTPS endpoint using Vercel OIDC and Microsoft Entra ID | Reviewed TypeScript provisioning and migration scripts |
 | Customer domain | Azure Cosmos DB for NoSQL | Local and Vercel targets | Azure Cosmos JavaScript SDK | Existing singleton Cosmos client and dedicated `customers` container | Reviewed TypeScript provisioning script |
+| Service domain | Azure Cosmos DB for NoSQL | Local and Vercel targets | Azure Cosmos JavaScript SDK | Existing singleton Cosmos client and dedicated `services` container | Reviewed TypeScript provisioning script |
 
 Authentication containers are provisioned with TTL enabled and no default
 expiry. Each expiring document declares its own retention. No seed data or ORM
@@ -26,6 +27,7 @@ schema generation is used.
 | Notification delivery | Notification | None; direct Cosmos SDK | None | Encrypted payload exists only while pending or failed |
 | Platform administration | AdminAudit, DeletedUserTombstone, BootstrapLock | None; direct Cosmos SDK | None | Audit and security-control records |
 | Customer management | Customer | None; direct Cosmos SDK | None | Dedicated `/tenantId` container with no default TTL |
+| Service management | Service | None; direct Cosmos SDK | None | Dedicated `/tenantId` container with no default TTL |
 
 ## Entity Model
 
@@ -36,6 +38,7 @@ erDiagram
     Business ||--o{ BusinessInvitation : "issues"
     Business ||--o{ MembershipReservation : "owns"
     Business ||--o{ Customer : "owns"
+    Business ||--o{ Service : "offers"
     User ||--o{ Session : "opens"
     User ||--o{ AuthToken : "receives"
     User ||--o{ Notification : "receives"
@@ -115,6 +118,18 @@ erDiagram
         string createdAt
         string updatedAt
     }
+    Service {
+        string id PK
+        string tenantId FK
+        string name
+        string description
+        int durationMinutes
+        int priceMinor
+        string currency
+        boolean active
+        string createdAt
+        string updatedAt
+    }
 ```
 
 EmailIndex, RateLimit, DeletedUserTombstone and BootstrapLock are technical
@@ -129,6 +144,7 @@ control records omitted from the relationship diagram to keep it readable.
 | Tenant resolution | `tenant-context.ts` | `resolveTenantContext`, tenant guards | Resolves company ownership from server-validated membership |
 | Business setup | `business-service.ts` | `getBusinessSetup`, `updateBusinessSettings`, invitation operations | Tenant-scoped business and invitation persistence |
 | Customer management | `customer-storage.ts` and `customer-service.ts` | `queryCustomerPage`, `getCustomer`, `createCustomer`, `updateCustomer`, `archiveCustomer`, `eraseCustomer` | Single-partition pagination, point reads, ETag writes, duplicate warnings and lifecycle operations |
+| Service management | `service-storage.ts` and `service-service.ts` | `queryServicePage`, `getService`, `createService`, `updateService`, `setServiceActive` | Single-partition pagination, point reads, ETag writes and active lifecycle operations |
 | Retention governance | `data-retention.ts` and `migrate-data-retention.ts` | `retentionSecondsFor` and dry-run migration | Central retention mapping and controlled migration |
 
 ## Caching Strategy
@@ -141,7 +157,7 @@ second-level or distributed cache is currently justified by measured traffic.
 ## Data Ownership Boundaries
 
 All current records share one Cosmos database but are separated into
-authentication control, sessions, throttling and Customer containers.
+authentication control, sessions, throttling, Customer and Service containers.
 `auth-control` co-locates related account and business-control records for
 point reads and same-partition transactions; it is not approved for Customers,
 Bookings, Messages or Payments.
@@ -155,6 +171,10 @@ The approved Customer container uses `/tenantId`, aligning the partition with
 all Stage 6 list, search, point-read and write operations. Duplicate customer
 email and phone values remain allowed; duplicate warnings are application
 guidance rather than database uniqueness constraints.
+
+The implemented Service container also uses `/tenantId`. Prices use safe
+integer minor units with explicit currency, and inactive records remain durable
+so future Booking references can retain stable Service IDs.
 
 ### Data Classification & Sensitivity
 
@@ -170,6 +190,7 @@ guidance rather than database uniqueness constraints.
 | AdminAudit | Actor and affected identifiers | Security metadata | Server-only writes and one-year TTL |
 | DeletedUserTombstone | Former user ID and timestamps | Pseudonymous identifier | Name and email removed; one-year TTL |
 | Customer | Name, email and phone | PII | Server-resolved tenant partition, archive, admin-only anonymization and no PCI or PHI |
+| Service | Name, description, duration and price | Business data; possible incidental PII in free text | Server-resolved tenant partition, no payment-card data and durable deactivation |
 | RateLimit | Hashed scope and count | None directly | Hashed keys and short TTL |
 | BootstrapLock | User ID and setup-token hash | Security | Hashed setup token and permanent single-use control |
 

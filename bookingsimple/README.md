@@ -146,8 +146,8 @@ and must be reassessed before using real data or deploying to production.
    messages and email contents are not logged. Restart the development server
    after changing environment settings, then request a resend at `/verify`.
 4. The `booksimple` database with `auth-control`, `auth-sessions`,
-   `auth-throttles` and the tenant-partitioned `customers` container has been
-   provisioned in the approved Azure account.
+   `auth-throttles` and the tenant-partitioned `customers` and `services`
+   containers has been provisioned in the approved Azure account.
    To provision or verify another approved target, set
    `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` and run:
 
@@ -229,6 +229,13 @@ $env:AUTH_PAGE_TEST_BASE_URL='http://localhost:3000'
 node --env-file=.env.local --conditions=react-server --import tsx --test tests\customer-page-access.integration.test.mjs
 ```
 
+The equivalent synthetic Service isolation and minor-unit pricing workflow is:
+
+```powershell
+$env:AUTH_PAGE_TEST_BASE_URL='http://localhost:3000'
+node --env-file=.env.local --conditions=react-server --import tsx --test tests\service-page-access.integration.test.mjs
+```
+
 ---
 
 ## Business Setup
@@ -296,6 +303,19 @@ Customer data is stored in the dedicated `customers` container partitioned by
 `/tenantId`; it is never stored in the authentication container. Detail reads
 use the Customer GUID and authenticated tenant GUID together. The API never
 accepts a browser tenant ID as authorization.
+
+### Service management
+
+Active company users can open `/services` to create, search, view, edit,
+activate and deactivate generic bookable Services belonging to their
+server-resolved business. Price input is converted server-side to integer minor
+units, currency defaults from Business settings, and zero-priced Services are
+supported.
+
+Service data is stored in the dedicated `services` container partitioned by
+`/tenantId`; it is never stored in the authentication container. Service detail
+reads and writes require both the Service GUID and authenticated tenant GUID.
+Deactivation preserves stable identity for future Booking references.
 
 ---
 

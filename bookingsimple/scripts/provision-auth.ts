@@ -6,6 +6,7 @@ import {
   AUTH_THROTTLES_CONTAINER_ID,
 } from "../src/server/auth-storage";
 import { CUSTOMER_CONTAINER_ID } from "../src/server/customer-types";
+import { SERVICE_CONTAINER_ID } from "../src/server/service-types";
 
 const API_VERSION = "2024-05-15";
 const MANAGEMENT_ENDPOINT = "https://management.azure.com";
@@ -21,6 +22,10 @@ const containerDefinitions = [
   })),
   {
     id: CUSTOMER_CONTAINER_ID,
+    partitionKeyPath: "/tenantId",
+  },
+  {
+    id: SERVICE_CONTAINER_ID,
     partitionKeyPath: "/tenantId",
   },
 ];

@@ -87,7 +87,7 @@ export function CustomersPanel() {
 
   async function loadMore() {
     if (!continuationToken || loading) return;
-    if (status !== "active" || submittedSearch) setLoading(true);
+    setLoading(true);
     setError("");
     try {
       const query = new URLSearchParams({
@@ -135,10 +135,7 @@ export function CustomersPanel() {
       setStatus("active");
       setSubmittedSearch("");
       setSearch("");
-      setCustomers((current) => [
-        result.customer,
-        ...current.filter((customer) => customer.id !== result.customer.id),
-      ]);
+      setQueryVersion((version) => version + 1);
     } catch (failure) {
       setError(
         failure instanceof Error

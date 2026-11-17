@@ -1217,7 +1217,9 @@ a:focus-visible {
 }
 
 .customer-form-grid,
-.customer-search {
+.customer-search,
+.service-form-grid,
+.service-search {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
@@ -1226,8 +1228,36 @@ a:focus-visible {
 }
 
 .customer-form-grid .account-button,
-.customer-search .account-button {
+.customer-search .account-button,
+.service-form-grid .account-button,
+.service-search .account-button {
   min-height: 44px;
+}
+
+.service-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.service-description-field {
+  grid-column: span 2;
+}
+
+.account-field textarea {
+  min-width: 0;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid #bfc3d1;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+}
+
+.account-field textarea:focus-visible {
+  outline: 3px solid #a9a4ff;
+  outline-offset: 2px;
 }
 
 .customer-warning {
@@ -1285,8 +1315,14 @@ a:focus-visible {
 
 @media (max-width: 760px) {
   .customer-form-grid,
-  .customer-search {
+  .customer-search,
+  .service-form-grid,
+  .service-search {
     grid-template-columns: 1fr;
+  }
+
+  .service-description-field {
+    grid-column: auto;
   }
 }
 

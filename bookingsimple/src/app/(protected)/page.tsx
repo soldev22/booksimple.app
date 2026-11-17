@@ -23,7 +23,7 @@ const navigationItems: NavigationItem[] = [
   { label: "Inbox", icon: "inbox" },
   { label: "Customers", icon: "customers", href: "/customers" },
   { label: "Bookings", icon: "bookings" },
-  { label: "Services", icon: "services" },
+  { label: "Services", icon: "services", href: "/services" },
   { label: "Settings", icon: "settings", href: "/settings" },
 ];
 
@@ -123,7 +123,7 @@ const dashboardMetrics = [
   { label: "Today's bookings", detail: "Booking tools are coming later" },
   { label: "Open conversations", detail: "Inbox tools are coming later" },
   { label: "Customers", detail: "Manage customer records" },
-  { label: "Services", detail: "Service tools are coming later" },
+  { label: "Services", detail: "Manage bookable Services" },
 ];
 
 export default async function Home() {

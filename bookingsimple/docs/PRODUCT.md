@@ -242,17 +242,22 @@ Core conversation behaviour must remain independent of individual communication 
 
 Businesses may define services that can be booked.
 
-A service may eventually contain information such as:
+A service contains:
 
 - name
 - description
-- duration
-- price
+- duration in minutes
+- price stored in integer currency minor units
+- currency
 - active/inactive status
 
 The concept of a service is generic.
 
 Do not assume a service is a beauty treatment, haircut or any other industry-specific activity.
+
+Active company users can create, search, view and edit Services belonging to
+their own business. Services are deactivated rather than physically deleted so
+future Booking references retain a stable Service identity.
 
 ---
 

@@ -232,8 +232,8 @@ estimates do not establish document sizes, audit-event volume or data growth.
 
 Database: `booksimple`. Authentication containers use the immutable
 `/partitionKey` path with Hash partitioning and `defaultTtl=-1` (TTL enabled;
-documents expire only when they specify a TTL). The Customer container uses
-the immutable `/tenantId` path and has no default TTL.
+documents expire only when they specify a TTL). Customer and Service containers
+use the immutable `/tenantId` path and have no default TTL.
 
 | Container | Partition derivation | Records and retention |
 | --- | --- | --- |
@@ -241,6 +241,7 @@ the immutable `/tenantId` path and has no default TTL.
 | `auth-sessions` | Owning immutable account partition key | Hashed session verifiers; maximum seven-day lifetime, explicit revocation and account authorization version checks |
 | `auth-throttles` | Hash of rate-limit scope and protected account key | Expiring, ETag-protected counters; no in-memory-only abuse protection |
 | `customers` | Server-resolved active Business GUID in `/tenantId` | Active, archived and anonymized Customer records; durable with no automatic expiry |
+| `services` | Server-resolved active Business GUID in `/tenantId` | Active and inactive bookable Service records; durable with no automatic expiry |
 
 The plain-language record inventory, sensitivity classifications and retention
 matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
@@ -289,6 +290,32 @@ explicit confirmation value. It uses an ETag-protected replacement that removes
 name, normalized search name, email and phone while retaining the Customer GUID,
 tenant GUID, schema identity, erased status and timestamps for future Booking
 and Conversation references. Ordinary deletion archives rather than erases.
+
+## Implemented Service Management
+
+Services are stored only in the dedicated `services` container. List and search
+queries specify the server-resolved `/tenantId` partition, while detail reads
+use a Cosmos point read with the Service GUID and authenticated tenant GUID.
+Browser tenant IDs are not accepted. Invalid and cross-tenant IDs return not
+found for reads, edits and status changes.
+
+Service documents carry a `service` discriminator and schema version. Name is
+required, description is optional, and duration is a positive safe integer
+number of minutes. Price is stored as a non-negative safe integer in the
+currency's minor unit. Decimal input is converted on the server using the
+selected three-letter currency's fraction digits, so `25.50 GBP` is stored as
+`2550`, while zero-decimal and three-decimal currencies retain their correct
+scales. Zero-priced Services are permitted.
+
+The create form defaults currency from the active Business, but every Service
+stores its own explicit currency. All active company users can create, search,
+view, edit, activate and deactivate Services within their tenant. Deactivation
+preserves the Service GUID for future Booking references. Updates and status
+changes use Cosmos ETags to reject conflicting writes.
+
+Service names are not globally unique. Separate businesses can independently
+create identically named Services, but tenant partitioning and authorization
+prevent either business from listing or accessing the other's records.
 
 Approval spans account and business partitions, so it is not globally atomic.
 For a new membership it reserves a generated member username, records the

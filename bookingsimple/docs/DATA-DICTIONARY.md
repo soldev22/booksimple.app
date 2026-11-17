@@ -83,8 +83,8 @@ Major business domains use dedicated containers rather than expanding
 
 | Domain | Planned container | Partition key | Status |
 | --- | --- | --- | --- |
-| Customers | `customers` | `/tenantId` | Approved design; not provisioned |
-| Services | To be approved during Stage 7 | Expected tenant ownership | Not designed |
+| Customers | `customers` | `/tenantId` | Implemented and provisioned |
+| Services | `services` | `/tenantId` | Approved Stage 7 design |
 | Conversations and messages | To be approved during Stage 8 | Expected conversation-oriented partitioning | Not designed |
 | Bookings | To be approved during Stage 9 | Expected tenant-oriented access with deliberate growth analysis | Not designed |
 | Payments | To be approved during Stage 11 | Provider-safe internal records only | Not designed |
@@ -144,6 +144,63 @@ Customer decisions:
 
 The server derives `tenantId` from the authenticated membership. A browser
 value is never accepted as proof of tenant ownership.
+
+## Approved Service Document
+
+Stage 7 uses a dedicated `services` container partitioned by `/tenantId`.
+The container has no default TTL because active and inactive Services are
+durable business configuration.
+
+```json
+{
+  "id": "service-guid",
+  "tenantId": "business-guid",
+  "type": "service",
+  "schemaVersion": 1,
+  "name": "Initial consultation",
+  "searchName": "initial consultation",
+  "description": "A general introductory appointment.",
+  "durationMinutes": 60,
+  "priceMinor": 2550,
+  "currency": "GBP",
+  "active": true,
+  "createdAt": "2026-11-17T16:45:00.000Z",
+  "updatedAt": "2026-11-17T16:45:00.000Z"
+}
+```
+
+Service decisions:
+
+- `tenantId` is both the ownership boundary and immutable Cosmos partition key.
+- Name is required and description is optional.
+- Duration is stored as a positive safe integer number of minutes.
+- Price is stored as a non-negative safe integer in the currency's minor unit;
+  `2550` represents `25.50` for a two-decimal currency.
+- Currency is an uppercase three-letter ISO currency code. New Services default
+  to the active Business currency, while the stored value remains explicit.
+- Zero-priced Services are allowed.
+- Service names are not globally unique. Different businesses may offer
+  identically named Services without sharing or exposing their Service records.
+- Normal lifecycle management uses `active`; records are deactivated rather
+  than physically deleted.
+- All active company users can create, search, view, edit, activate and
+  deactivate Services belonging to their own Business.
+- Service records never contain customer data, payment-card details,
+  authentication state or provider secrets.
+
+## Service Access Patterns
+
+| Operation | Partition scope |
+| --- | --- |
+| List Services for the active company | One `tenantId` partition |
+| Search Services by name or description | One `tenantId` partition |
+| Read a Service by ID | Point read using Service ID and server-resolved `tenantId` |
+| Create or update a Service | One `tenantId` partition |
+| Activate or deactivate a Service | One `tenantId` partition |
+| Platform-wide Service search | Not part of Stage 7 |
+
+The server derives `tenantId` from authenticated membership for every Service
+operation. No Service API accepts a browser tenant ID as proof of ownership.
 
 ## Governance Rule
 

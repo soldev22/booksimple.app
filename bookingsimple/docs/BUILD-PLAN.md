@@ -639,6 +639,22 @@ Do not introduce beauty-specific terminology.
 - tenant isolation verified
 - responsive UI works
 
+## Completion
+
+Implemented with a dedicated `services` container partitioned by `/tenantId`.
+Service list and name/description search use bounded continuation-token pages
+inside the authenticated tenant partition. Service details use point reads with
+the Service GUID and server-resolved tenant GUID.
+
+All active company users can create, view, search and edit Services and can
+activate or deactivate them. Prices are converted server-side from decimal
+input to safe integer minor units using the selected currency's fraction
+digits. Zero prices are supported. Currency defaults to the active Business
+currency in the UI and remains explicit on every Service document.
+
+Runtime input validation, ETag-protected updates, cross-tenant API and URL
+denial, responsive tables, and the workspace Services link are implemented.
+
 STOP after completion.
 
 ---
