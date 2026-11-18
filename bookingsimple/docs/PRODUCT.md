@@ -313,8 +313,8 @@ The selected Service supplies a duration, price and currency snapshot, while
 the Business timezone is used to convert local input into UTC start and end
 instants. A resolved Conversation can originate a Booking and remains linked
 to it. Staff can view, filter, edit non-terminal Bookings, change explicit
-status and cancel without deleting history. Deposit, payment, availability,
-staff/resource assignment and location behavior remain future stages.
+status and cancel without deleting history. Availability, staff/resource assignment and location behavior remain future
+stages.
 
 ---
 
@@ -386,6 +386,14 @@ The override applies to that booking only.
 
 The system should retain enough information to distinguish the business's default policy from an individual booking override.
 
+The implemented deposit engine lets company administrators configure the
+Business default percentage. Every new Booking snapshots that default, its
+applied percentage and the deterministic minor-unit amount so later Business
+changes do not rewrite historic terms. Active company users may override a
+non-terminal Booking; the system retains the original default, applied
+percentage, overriding user and timestamp. This records required terms only:
+no payment is collected or marked paid in this stage.
+
 ---
 
 # 14. Payments
@@ -402,6 +410,21 @@ The application needs to record appropriate information about the payment/deposi
 Payment provider selection will be made during architecture/integration planning.
 
 Do not implement a payment provider until that decision has been made.
+
+The Payment domain retains the explicit `MOCK_TEST` provider for local
+simulation and also supports Stripe Connect with Stripe-hosted Checkout.
+Every tenant business owns a separate connected Merchant account and receives
+direct charges as merchant of record. Stripe collects its processing fees and
+carries connected-account loss responsibility. BookSimple takes no application
+fee initially.
+
+A deposit request moves the Booking to `AWAITING_DEPOSIT`; a signed successful
+provider event records `PAID` once and reconciles the Booking to `CONFIRMED`.
+A positive-deposit Booking may request its remaining balance only after the
+deposit is paid. A 0% deposit Booking may request its full amount as a balance.
+Duplicate requests and provider events are idempotent, failures are explicit,
+and browser return URLs never mark Payments paid. Refund workflows remain
+future work.
 
 ---
 
@@ -434,6 +457,16 @@ Reminder timing should be configurable.
 Reminder delivery should eventually support appropriate available communication channels.
 
 Reminder infrastructure must support reliable background processing.
+
+The implemented Reminder foundation lets company administrators configure up
+to five Business defaults using EMAIL, SMS, WHATSAPP or META and a one-minute
+to seven-day offset. New Bookings snapshot those defaults into tenant-owned
+Reminder records. Unsent reminders follow Booking time changes and are
+cancelled when the Booking becomes completed, cancelled or no-show.
+
+Stage 12 delivery is explicitly simulated and sends no customer message. A
+server-side worker finds due records, uses ETag claims and processing leases,
+and retains sent history without depending on an open browser.
 
 ---
 

@@ -328,12 +328,17 @@ async function run() {
         name: initialBusinessSetup.business.name,
         timezone: initialBusinessSetup.business.timezone,
         currency: initialBusinessSetup.business.currency,
+        defaultDepositPercentage:
+          initialBusinessSetup.business.defaultDepositPercentage,
+        reminderRules: initialBusinessSetup.business.reminderRules,
         canManage: initialBusinessSetup.business.canManage,
       },
       {
         name: "Synthetic test business",
         timezone: "Europe/London",
         currency: "GBP",
+        defaultDepositPercentage: 0,
+        reminderRules: [],
         canManage: true,
       },
   );
@@ -344,11 +349,21 @@ async function run() {
         name: "Updated synthetic business",
         timezone: "America/New_York",
         currency: "USD",
+        defaultDepositPercentage: 25,
+        reminderRules: [
+          {
+            id: "email-1440",
+            channel: "EMAIL",
+            offsetMinutes: 1440,
+          },
+        ],
       },
   );
   assert.equal(updatedBusiness.name, "Updated synthetic business");
   assert.equal(updatedBusiness.timezone, "America/New_York");
   assert.equal(updatedBusiness.currency, "USD");
+  assert.equal(updatedBusiness.defaultDepositPercentage, 25);
+  assert.equal(updatedBusiness.reminderRules.length, 1);
 
   currentCheck = "business-invitation-create";
   const invitationMessages: {
@@ -459,6 +474,8 @@ async function run() {
           name: "Forbidden update",
           timezone: "Europe/London",
           currency: "GBP",
+          defaultDepositPercentage: 50,
+          reminderRules: [],
         }),
       403,
   );

@@ -64,7 +64,8 @@ External messaging and payment providers are isolated behind provider adapters.
 
 The core application must not depend directly on provider-specific implementations.
 
-Registration and the implemented Customer, Service, Conversation and Booking domains
+Registration and the implemented Customer, Service, Conversation, Booking,
+deposit-policy and Payment domains
 use the reviewed containers described in
 [ARCHITECTURE.md](docs/ARCHITECTURE.md); future business-domain containers still
 require separate design approval. The initial connectivity plan uses the public Cosmos DB endpoint with
@@ -148,7 +149,9 @@ and must be reassessed before using real data or deploying to production.
    after changing environment settings, then request a resend at `/verify`.
 4. The `booksimple` database with `auth-control`, `auth-sessions`,
    `auth-throttles`, `customers`, `services`, hierarchical `conversations`,
-   tenant-partitioned `channel-identities` and `bookings` containers has been
+   tenant-partitioned `channel-identities`, `bookings`, `payments` and
+   `reminders`
+   containers has been
    provisioned in the approved Azure account.
    To provision or verify another approved target, set
    `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP` in `.env.local` or the
@@ -271,7 +274,8 @@ The Stage 5 migration is idempotent and can be rerun:
 npm run migrate:business-settings
 ```
 
-The migration uses `.env.local`, adds `Europe/London` and `GBP` only when those
+The migration uses `.env.local`, adds `Europe/London`, `GBP` and a 0% default
+deposit only when those
 fields are missing, and does not overwrite configured values.
 
 ### Data dictionary and retention
@@ -294,6 +298,67 @@ npm run migrate:data-retention -- --apply
 
 The migration never prints record contents, email addresses, secrets or
 credentials.
+
+Preview the schema-version-1 Booking deposit migration:
+
+```powershell
+npm run migrate:booking-deposits
+```
+
+After checking the count, apply it explicitly:
+
+```powershell
+npm run migrate:booking-deposits -- --apply
+```
+
+Legacy Bookings receive explicit 0% terms rather than an invented historic
+deposit obligation.
+
+### Stripe Connect test setup
+
+Stripe is opt-in and the application continues to use `MOCK_TEST` by default.
+To use Stripe in a development environment, put these values in `.env.local`
+or deployment secret management, never in source control:
+
+```dotenv
+PAYMENT_PROVIDER=STRIPE
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_CONNECT_WEBHOOK_SECRET=whsec_...
+APP_ORIGIN=http://localhost:3000
+```
+
+Create a Connect webhook endpoint for
+`<APP_ORIGIN>/api/stripe/webhook`, configured to receive events from connected
+accounts. Subscribe to `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`, and
+`checkout.session.async_payment_failed`. A Stripe CLI listener uses its own
+displayed `whsec_...` secret rather than the Dashboard endpoint secret.
+
+Restart the application after changing the environment. A company
+administrator can then open Account, choose Business profile, and start
+Stripe-hosted onboarding. Test and live connected accounts are deliberately
+separate. Do not change to an `sk_live_...` key or enable production payments
+without explicit production approval and HTTPS `APP_ORIGIN`.
+
+### Booking reminders
+
+Company administrators configure up to five default Booking reminder rules in
+Business profile settings. Each rule selects EMAIL, SMS, WHATSAPP or META and
+an offset from 1 minute through 7 days. New Bookings snapshot the current
+rules; changing the defaults does not rewrite existing Bookings.
+
+Stage 12 delivery uses the explicitly simulated `MOCK_TEST` provider and sends
+no customer message. Due Reminder records are claimed and processed entirely
+server-side with:
+
+```powershell
+npm run process:reminders
+```
+
+This command can be invoked by an external scheduler and does not require an
+open browser. Processing uses ETags and expiring leases, skips duplicate sends,
+reschedules unsent reminders when Booking time changes, and cancels unsent
+reminders for completed, cancelled or no-show Bookings.
 
 ### Customer management
 
@@ -416,7 +481,7 @@ Do not automatically begin the next stage.
 
 Completed stage:
 
-STAGE 1 — Application Foundation
+STAGE 12 — Reminder Domain
 
 Status:
 
@@ -424,12 +489,12 @@ COMPLETE.
 
 Current work:
 
-STAGE 3 — Registration and platform administration, with the necessary
-database and server-side authorization foundation implemented.
-
-Company-managed invitations, business workspace features and later booking
-stages are not implemented by this step. Live service configuration and
-deployment verification remain prerequisites before use with real data.
+Stages 1 through 12 are implemented. The Payment provider can remain the
+clearly labelled `MOCK_TEST`, or be explicitly configured for tenant-owned
+Stripe Connect test accounts and hosted Checkout. Stripe sandbox validation is
+pending external configuration and production payments are not enabled.
+Reminder delivery is deliberately simulated until the messaging-provider
+stages are implemented. Stage 13 has not started.
 
 ---
 
@@ -458,6 +523,7 @@ deployment verification remain prerequisites before use with real data.
 21. Azure Deployment
 
 Each stage must be completed and verified before moving to the next.
+Stages 1 through 11 are complete. Stage 12 has not started.
 
 ---
 

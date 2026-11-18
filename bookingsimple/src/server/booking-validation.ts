@@ -33,6 +33,12 @@ const bookingStatusSchema = z
   })
   .strict();
 
+const bookingDepositOverrideSchema = z
+  .object({
+    percentage: z.coerce.number().int().min(0).max(100),
+  })
+  .strict();
+
 const bookingListSchema = z
   .object({
     status: z
@@ -49,6 +55,9 @@ const bookingIdSchema = z.uuid();
 export type BookingMutationInput = z.infer<typeof bookingMutationSchema>;
 export type BookingUpdateInput = z.infer<typeof bookingUpdateSchema>;
 export type BookingStatusInput = z.infer<typeof bookingStatusSchema>;
+export type BookingDepositOverrideInput = z.infer<
+  typeof bookingDepositOverrideSchema
+>;
 export type BookingListInput = z.infer<typeof bookingListSchema>;
 
 export function parseBookingMutationInput(
@@ -63,6 +72,12 @@ export function parseBookingUpdateInput(input: unknown): BookingUpdateInput {
 
 export function parseBookingStatusInput(input: unknown): BookingStatusInput {
   return bookingStatusSchema.parse(input);
+}
+
+export function parseBookingDepositOverrideInput(
+  input: unknown,
+): BookingDepositOverrideInput {
+  return bookingDepositOverrideSchema.parse(input);
 }
 
 export function parseBookingListInput(

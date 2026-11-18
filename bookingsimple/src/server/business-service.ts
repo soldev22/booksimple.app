@@ -25,6 +25,7 @@ import {
 import {
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
+  DEFAULT_DEPOSIT_PERCENTAGE,
   type BusinessDocument,
   type BusinessInvitationDocument,
   type BusinessInvitationView,
@@ -102,6 +103,9 @@ function toBusinessSettings(
     status: document.status,
     timezone: document.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
     currency: document.currency ?? DEFAULT_BUSINESS_CURRENCY,
+    defaultDepositPercentage:
+      document.defaultDepositPercentage ?? DEFAULT_DEPOSIT_PERCENTAGE,
+    reminderRules: document.reminderRules ?? [],
     canManage,
   };
 }
@@ -162,6 +166,8 @@ export async function updateBusinessSettings(
         name: input.name,
         timezone: input.timezone,
         currency: input.currency,
+        defaultDepositPercentage: input.defaultDepositPercentage,
+        reminderRules: input.reminderRules,
         updatedAt: new Date().toISOString(),
       },
       business.etag,

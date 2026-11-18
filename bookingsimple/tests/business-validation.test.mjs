@@ -13,11 +13,29 @@ test("business settings accept explicit valid values", () => {
       name: "Example Business",
       timezone: "Europe/London",
       currency: "gbp",
+      defaultDepositPercentage: "25",
+      reminderRules: JSON.stringify([
+        { channel: "EMAIL", offsetMinutes: 1440 },
+        { channel: "SMS", offsetMinutes: 120 },
+      ]),
     }),
     {
       name: "Example Business",
       timezone: "Europe/London",
       currency: "GBP",
+      defaultDepositPercentage: 25,
+      reminderRules: [
+        {
+          id: "email-1440",
+          channel: "EMAIL",
+          offsetMinutes: 1440,
+        },
+        {
+          id: "sms-120",
+          channel: "SMS",
+          offsetMinutes: 120,
+        },
+      ],
     },
   );
 });
@@ -28,17 +46,51 @@ test("business settings reject invalid or browser-supplied tenant data", () => {
       name: "Example Business",
       timezone: "Not/A_Timezone",
       currency: "GBP",
+      defaultDepositPercentage: 25,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
       currency: "INVALID",
+      defaultDepositPercentage: 25,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
       currency: "GBP",
+      defaultDepositPercentage: 25,
       tenantId: "22222222-2222-4222-8222-222222222222",
+    },
+    {
+      name: "Example Business",
+      timezone: "Europe/London",
+      currency: "GBP",
+      defaultDepositPercentage: -1,
+    },
+    {
+      name: "Example Business",
+      timezone: "Europe/London",
+      currency: "GBP",
+      defaultDepositPercentage: 101,
+    },
+    {
+      name: "Example Business",
+      timezone: "Europe/London",
+      currency: "GBP",
+      defaultDepositPercentage: 25,
+      reminderRules: [
+        { channel: "EMAIL", offsetMinutes: 1440 },
+        { channel: "EMAIL", offsetMinutes: 1440 },
+      ],
+    },
+    {
+      name: "Example Business",
+      timezone: "Europe/London",
+      currency: "GBP",
+      defaultDepositPercentage: 25,
+      reminderRules: [
+        { channel: "EMAIL", offsetMinutes: 0 },
+      ],
     },
   ]) {
     assert.throws(() => parseBusinessUpdateInput(input));

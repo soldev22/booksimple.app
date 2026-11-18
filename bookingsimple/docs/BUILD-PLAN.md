@@ -937,6 +937,24 @@ Test:
 
 and rounding cases.
 
+Implemented with a company-administrator-managed Business default from 0% to
+100%. New Bookings snapshot the default and applied percentages, calculated
+minor-unit amount and override state. Calculations round half up to the nearest
+minor unit without unsafe percentage multiplication.
+
+All active company users who can manage Bookings may apply a Booking-specific
+override. The current override records the authenticated user ID, member
+username and timestamp. Completed, cancelled and no-show Booking terms are
+final. Selecting a different Service recalculates the amount from the Booking's
+preserved applied percentage; changing the Business default never rewrites
+historic Bookings.
+
+Legacy Stage 9 Bookings are migrated to explicit 0% terms because no deposit
+obligation existed before this stage. Validation covers 0%, 1%, 25%, 50%, 99%,
+100%, non-exact rounding, the safe integer boundary, authorization, terminal
+status protection and tenant isolation. No payment state or collection is
+introduced.
+
 ## Completion Criteria
 
 - defaults work
@@ -1021,6 +1039,25 @@ Booking Confirmed
 - tenant isolation verified
 - mocked payment clearly identified as simulated
 
+Implemented with a dedicated `payments` container partitioned by `/tenantId`.
+Stage 11 initially created one deterministic `DEPOSIT` Payment per Booking and
+snapshotted the Booking deposit amount and currency. The explicitly approved
+early Stripe provider work now also implements `BALANCE`: only after a positive
+deposit is paid, or for the full Booking amount when the deposit is 0%.
+
+The `MOCK_TEST` provider adapter and UI are explicitly labelled as simulated;
+no card details, provider credentials or real money are involved. Creating a
+request moves a `PENDING` Booking to `AWAITING_DEPOSIT`. A successful simulated
+notification uses an ETag-protected Payment transition to `PAID`, then
+retry-safely reconciles the Booking to `CONFIRMED`.
+
+Duplicate request creation is prevented by the deterministic Payment ID.
+Duplicate success notifications preserve the original `paidAt` timestamp and
+reconcile rather than applying a second effect. Deposit terms and Service
+pricing are locked once a pending or paid deposit Payment exists. Tenant
+ownership is resolved server-side for every Payment list, create and simulate
+operation.
+
 STOP after completion.
 
 ---
@@ -1072,6 +1109,28 @@ Verify:
 - retry/idempotency behaviour is defined
 - mock delivery works
 - browser does not control business-critical scheduling
+
+Implemented with company-administrator-managed Business defaults containing up
+to five unique channel/offset rules. EMAIL, SMS, WHATSAPP and META are
+provider-neutral labels in this stage. Offsets range from one minute through
+seven days and apply only to new Bookings.
+
+New Bookings create deterministic tenant-partitioned Reminder records that
+snapshot their rule, UTC schedule, Booking start and IANA timezone. Editing a
+Booking reschedules unsent reminders; completed, cancelled and no-show
+Bookings cancel them. Reads point-check the Booking in the authenticated
+tenant, and browser tenant IDs are never accepted.
+
+The standalone `process:reminders` worker finds due records without a browser,
+claims them using Cosmos ETags and five-minute leases, rechecks Booking state
+and schedule, and records a deterministic `MOCK_TEST` result without sending a
+customer message. Sent records are not selected again. Failures use bounded
+exponential retry times and expired processing leases are recoverable.
+
+Validation covers automatic creation, UTC scheduling across tenant timezones,
+rescheduling, terminal cancellation, cross-tenant denial and duplicate
+processing. The reviewed `reminders` container is provisioned with
+`/tenantId`.
 
 STOP after completion.
 
@@ -1180,6 +1239,8 @@ STOP after completion.
 
 # STAGE 15 — Real Payment Provider
 
+Status: IMPLEMENTED EARLY; STRIPE SANDBOX VALIDATION PENDING
+
 ## Objective
 
 Replace the mock payment implementation with a real provider adapter.
@@ -1222,6 +1283,18 @@ Booking Confirmed
 - booking confirmation follows correct payment state
 
 Do not enable production payments without explicit approval.
+
+The approved provider is Stripe Connect Accounts v2. Each tenant onboards a
+separate Merchant account with the full Stripe Dashboard. Checkout uses direct
+charges, Stripe fee and loss collection, and no application fee. Separate test
+and live references prevent mode crossover. Signed connected-account Checkout
+webhooks, not browser redirects, are payment authority.
+
+Application implementation and deterministic tests are complete. A real
+test-mode connected-account onboarding and Checkout payment remain
+environment-gated until the platform secret key and Connect webhook signing
+secret are configured outside source control. Live mode is not approved by
+this implementation status.
 
 STOP after completion.
 

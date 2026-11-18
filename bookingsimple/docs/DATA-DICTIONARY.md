@@ -36,6 +36,8 @@ human-readable. Raw secrets, passwords and session tokens are never stored.
 | `conversations` | Tenant-owned Conversation threads | `/tenantId`, then `/conversationId` | Conversation summaries and separate Messages |
 | `channel-identities` | Tenant-owned communication contact identities | `/tenantId` | Normalized channel addresses and optional Customer links |
 | `bookings` | Tenant-owned Booking records | `/tenantId` | Customer and Service references, UTC times, timezone, snapshots and status |
+| `payments` | Tenant-owned internal Payment records | `/tenantId` | Booking references, minor-unit amounts, provider references and lifecycle status; never card details |
+| `reminders` | Tenant-owned Booking reminder records | `/tenantId` | Booking references, UTC schedules, channel labels, processing leases, attempts and mock delivery results |
 
 The authentication containers use `/partitionKey` because they contain several
 technical record types with different routing needs. Future business domains
@@ -47,7 +49,7 @@ will not copy this pattern automatically.
 | --- | --- | --- | --- | --- | --- |
 | `user` | Registered account and authorization state | Name, email, password hash, verification state, roles, optional company membership and application | Account holder; platform controls authorization | Active account lifetime; anonymized deletion tombstone for 1 year | Yes |
 | `email-index` | Enforces one active account per normalized email | Normalized email and user ID | Account system | Active account lifetime; deleted atomically when the account is anonymized | No |
-| `business` | Company tenant and basic profile | Name, status, member count, timezone and currency | Company tenant | Company lifetime until an approved business-retention process exists | Yes |
+| `business` | Company tenant and basic profile | Name, status, member count, timezone, currency, default deposit percentage, default reminder rules and non-secret Stripe connected-account references | Company tenant | Company lifetime until an approved business-retention process exists | Yes |
 | `business-invitation` | Allows one email to join one company | Invitee email, staff role, status, inviter ID, hashed secret and expiry | Company tenant | Pending for 30 days; accepted or revoked for 90 days; link valid for 7 days | Yes, while pending |
 | `membership-reservation` | Prevents duplicate internal usernames and maintains member counts during cross-document updates | User ID, internal username, role and operation ID | Company tenant | Active for membership lifetime; released for 30 days | No |
 | `email-verification` | One-time email verification | User ID, hashed token, authorization version and expiry | Account holder | 24 hours | No |
@@ -59,6 +61,8 @@ will not copy this pattern automatically.
 | `affected-account-audit` | Commits an affected-account change and its audit together | Actor ID, action, affected user or tenant and timestamp | Platform | 1 year | Not yet |
 | `deleted-user-tombstone` | Preserves a minimal anonymized deletion history when an email is reused | Former user ID and deletion timestamps | Platform | 1 year | No |
 | `platform-bootstrap-lock` | Permanently prevents a second first-platform-administrator bootstrap | Selected user ID, setup-token hash and completion state | Platform security | Permanent | No |
+| `payment` | Tracks a provider-safe payment request and its result | Booking ID, type, minor-unit amount, currency, status, provider reference and timestamps | Company tenant | Durable financial history until an approved retention policy exists | Yes |
+| `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease and mock provider reference | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
 
 ## Retention Rules
 
@@ -93,7 +97,37 @@ Major business domains use dedicated containers rather than expanding
 | Conversations and messages | `conversations` | `/tenantId`, then `/conversationId` | Implemented and provisioned |
 | Channel identities | `channel-identities` | `/tenantId` | Implemented and provisioned |
 | Bookings | `bookings` | `/tenantId` | Implemented and provisioned |
-| Payments | To be approved during Stage 11 | Provider-safe internal records only | Not designed |
+| Payments | `payments` | `/tenantId` | Approved for Stage 11 |
+| Reminders | `reminders` | `/tenantId` | Implemented and provisioned for Stage 12 |
+
+## Approved Stripe Connect Business Fields
+
+Each Business may store separate test and live Stripe Accounts v2 references:
+
+```json
+{
+  "stripeConnect": {
+    "test": {
+      "accountId": "acct_test_reference",
+      "createdAt": "2026-11-17T19:10:00.000Z"
+    },
+    "live": {
+      "accountId": "acct_live_reference",
+      "createdAt": "2026-11-17T19:20:00.000Z"
+    }
+  }
+}
+```
+
+- Connected-account IDs are provider references, not credentials.
+- Test and live references are separate so changing the platform key mode never
+  routes live money to a test account or reuses test onboarding in production.
+- Secret API keys, webhook signing secrets, account-link URLs and Checkout URLs
+  are never stored in Business documents.
+- Only company administrators can create an account or generate a single-use
+  hosted onboarding link.
+- The current capability/readiness state is retrieved from Stripe and is not
+  trusted solely from a stale local flag.
 
 ## Approved Customer Document
 
@@ -342,6 +376,10 @@ Bookings are durable business records and have no default TTL.
   "status": "PENDING",
   "totalAmountMinor": 2550,
   "currency": "GBP",
+  "defaultDepositPercentage": 25,
+  "appliedDepositPercentage": 25,
+  "depositAmountMinor": 638,
+  "depositOverridden": false,
   "createdAt": "2026-11-17T17:30:00.000Z",
   "updatedAt": "2026-11-17T17:30:00.000Z"
 }
@@ -361,6 +399,19 @@ Booking decisions:
   existing Booking's agreed duration or price.
 - New Bookings start as `PENDING`. Explicit statuses are `PENDING`,
   `AWAITING_DEPOSIT`, `CONFIRMED`, `COMPLETED`, `CANCELLED` and `NO_SHOW`.
+- `defaultDepositPercentage` snapshots the Business policy in force at
+  creation. `appliedDepositPercentage` is the percentage used for this Booking.
+- `depositAmountMinor` uses integer minor units and round-half-up calculation.
+  For example, 25% of 2550 minor units is 637.5 and stores as 638.
+- `depositOverridden` distinguishes policy terms from a Booking-specific
+  override. An override also stores `depositOverriddenByUserId`, the
+  human-readable `depositOverriddenByUsername` snapshot and
+  `depositOverriddenAt`; these fields are absent when no override applies.
+- Changing the Business default never recalculates historic Bookings. Changing
+  a non-terminal Booking's Service recalculates the amount using that Booking's
+  already-applied percentage.
+- Company administrators configure the Business default. Any active company
+  user who can manage Bookings may set or clear an individual override.
 - Cancellation changes status to `CANCELLED`; Bookings are not physically
   deleted.
 - Deposit policy, payment state, assigned staff, resources, locations, notes,
@@ -377,8 +428,70 @@ Booking decisions:
 | Read a Booking by ID | Point read using Booking ID and server-resolved `tenantId` |
 | Create or update a Booking | One `tenantId` partition after same-tenant reference checks |
 | Cancel or change status | ETag-protected replacement in one `tenantId` partition |
+| Override Booking deposit | ETag-protected replacement with authenticated user attribution |
 | Create from a Conversation | Full Conversation key plus same-tenant Customer validation |
 | Platform-wide Booking search | Not part of Stage 9 |
+
+Legacy Stage 9 Booking documents are migrated to schema version 2 with an
+explicit 0% default and applied deposit, zero minor-unit deposit amount and no
+override. This avoids inventing a historic obligation that did not previously
+exist.
+
+## Approved Payment Document
+
+Payment records remain separate from Bookings and never store payment-card or
+bank-account details.
+
+```json
+{
+  "id": "deposit-11111111-1111-4111-8111-111111111111",
+  "tenantId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "type": "payment",
+  "schemaVersion": 1,
+  "bookingId": "11111111-1111-4111-8111-111111111111",
+  "paymentType": "DEPOSIT",
+  "amountMinor": 638,
+  "currency": "GBP",
+  "status": "PENDING",
+  "provider": "MOCK_TEST",
+  "simulated": true,
+  "livemode": false,
+  "externalPaymentId": "mock_pay_22222222-2222-4222-8222-222222222222",
+  "createdAt": "2026-11-17T18:50:00.000Z",
+  "updatedAt": "2026-11-17T18:50:00.000Z"
+}
+```
+
+- `id` is deterministic for the Stage 11 deposit request, so retries cannot
+  create duplicate deposit Payment records for the same Booking.
+- `amountMinor` and `currency` snapshot the Booking deposit terms using safe
+  integer minor units.
+- `provider` is explicitly `MOCK_TEST` and `simulated` is always `true` in this
+  stage. No real provider or live charge exists.
+- Stripe Checkout Payments use `provider: "STRIPE"`, `simulated: false`, the
+  configured `livemode`, and the tenant's `connectedAccountId`. The
+  `externalPaymentId` is a Checkout Session ID and remains provider-safe.
+- A successful simulated provider notification changes `status` to `PAID` and
+  adds `paidAt` and `providerEventId`. Duplicate notifications preserve the
+  original payment timestamp and reconcile the Booking without double effects.
+- `DEPOSIT`, `BALANCE` and `FULL_PAYMENT` are reserved Payment types, but Stage
+  11 initially created only `DEPOSIT`. The approved Stripe integration also
+  creates `BALANCE`: after a paid deposit it is `totalAmountMinor` minus the
+  snapshotted deposit, while a 0% deposit Booking may pay its full amount as
+  the balance. A 100% paid deposit has no remaining balance.
+- `PENDING`, `PAID`, `FAILED` and `REFUNDED` are explicit statuses. Stage 11
+  implements only the safe `PENDING` to `PAID` simulated transition.
+
+## Payment Access Patterns
+
+| Operation | Partition behavior |
+| --- | --- |
+| Create or retry a deposit request | Deterministic create in the authenticated `tenantId` partition |
+| Read Payment detail | Point read using Payment ID plus authenticated `tenantId` |
+| List Payments for a Booking | Bounded single-partition query by `bookingId` |
+| Confirm mock Payment | ETag-protected replacement, then retry-safe Booking reconciliation |
+| Start Stripe Checkout | Direct charge scoped to the tenant connected account; deterministic idempotency key |
+| Confirm Stripe Payment | Raw-body signature-verified Connect webhook, account/mode/metadata checks, ETag replacement and retry-safe Booking reconciliation |
 
 ## Governance Rule
 

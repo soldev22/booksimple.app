@@ -1,7 +1,7 @@
 import type { ItemDefinition } from "@azure/cosmos";
 import type { CustomerStatus } from "./customer-types";
 
-export const BOOKING_SCHEMA_VERSION = 1;
+export const BOOKING_SCHEMA_VERSION = 2;
 export const BOOKING_CONTAINER_ID = "bookings";
 
 export const BOOKING_STATUSES = [
@@ -30,6 +30,13 @@ export type BookingDocument = ItemDefinition & {
   status: BookingStatus;
   totalAmountMinor: number;
   currency: string;
+  defaultDepositPercentage: number;
+  appliedDepositPercentage: number;
+  depositAmountMinor: number;
+  depositOverridden: boolean;
+  depositOverriddenByUserId?: string;
+  depositOverriddenByUsername?: string;
+  depositOverriddenAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -50,6 +57,12 @@ export type BookingView = {
   status: BookingStatus;
   totalAmountMinor: number;
   currency: string;
+  defaultDepositPercentage: number;
+  appliedDepositPercentage: number;
+  depositAmountMinor: number;
+  depositOverridden: boolean;
+  depositOverriddenByUsername?: string;
+  depositOverriddenAt?: string;
   createdAt: string;
   updatedAt: string;
 };

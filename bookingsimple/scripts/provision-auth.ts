@@ -12,6 +12,8 @@ import {
   CONVERSATION_CONTAINER_ID,
 } from "../src/server/conversation-types";
 import { BOOKING_CONTAINER_ID } from "../src/server/booking-types";
+import { PAYMENT_CONTAINER_ID } from "../src/server/payment-types";
+import { REMINDER_CONTAINER_ID } from "../src/server/reminder-types";
 
 const API_VERSION = "2024-05-15";
 const MANAGEMENT_ENDPOINT = "https://management.azure.com";
@@ -57,6 +59,16 @@ const containerDefinitions: ContainerDefinition[] = [
   },
   {
     id: BOOKING_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
+  },
+  {
+    id: PAYMENT_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
+  },
+  {
+    id: REMINDER_CONTAINER_ID,
     partitionKeyPaths: ["/tenantId"],
     partitionKeyKind: "Hash",
   },

@@ -6,11 +6,13 @@ import {
 } from "../src/server/booking-time.ts";
 import {
   parseBookingId,
+  parseBookingDepositOverrideInput,
   parseBookingListInput,
   parseBookingMutationInput,
   parseBookingStatusInput,
   parseBookingUpdateInput,
 } from "../src/server/booking-validation.ts";
+import { calculatePercentageAmountMinor } from "../src/server/money.ts";
 
 test("Booking times convert between tenant local time and UTC", () => {
   assert.equal(
@@ -116,4 +118,38 @@ test("Booking status, list and ID validation is bounded", () => {
   const id = "11111111-1111-4111-8111-111111111111";
   assert.equal(parseBookingId(id), id);
   assert.throws(() => parseBookingId("booking-1"));
+});
+
+test("deposit calculation rounds half up without floating-point multiplication", () => {
+  for (const [percentage, expected] of [
+    [0, 0],
+    [1, 26],
+    [25, 638],
+    [50, 1275],
+    [99, 2525],
+    [100, 2550],
+  ]) {
+    assert.equal(calculatePercentageAmountMinor(2550, percentage), expected);
+  }
+  assert.equal(
+    calculatePercentageAmountMinor(Number.MAX_SAFE_INTEGER, 100),
+    Number.MAX_SAFE_INTEGER,
+  );
+  assert.equal(calculatePercentageAmountMinor(0, 25), 0);
+  assert.throws(() => calculatePercentageAmountMinor(100, 101));
+  assert.throws(() => calculatePercentageAmountMinor(100.5, 25));
+});
+
+test("Booking deposit override accepts only an integer percentage", () => {
+  assert.deepEqual(parseBookingDepositOverrideInput({ percentage: "25" }), {
+    percentage: 25,
+  });
+  for (const input of [
+    { percentage: -1 },
+    { percentage: 101 },
+    { percentage: 25.5 },
+    { percentage: 25, tenantId: "injected" },
+  ]) {
+    assert.throws(() => parseBookingDepositOverrideInput(input));
+  }
 });

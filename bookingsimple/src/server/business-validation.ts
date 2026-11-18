@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  MAX_REMINDER_OFFSET_MINUTES,
+  MAX_REMINDER_RULES,
+  REMINDER_CHANNELS,
+  type BusinessReminderRule,
+} from "./reminder-types";
 
 function isTimeZone(value: string): boolean {
   try {
@@ -33,6 +39,53 @@ const businessUpdateSchema = z
       .trim()
       .transform((value) => value.toUpperCase())
       .refine(isCurrency),
+    defaultDepositPercentage: z.coerce.number().int().min(0).max(100),
+    reminderRules: z.preprocess(
+      (value) => {
+        if (value === undefined) return [];
+        if (typeof value !== "string") return value;
+        try {
+          return JSON.parse(value) as unknown;
+        } catch {
+          return value;
+        }
+      },
+      z
+        .array(
+          z
+            .object({
+              channel: z.enum(REMINDER_CHANNELS),
+              offsetMinutes: z.coerce
+                .number()
+                .int()
+                .min(1)
+                .max(MAX_REMINDER_OFFSET_MINUTES),
+            })
+            .strict(),
+        )
+        .max(MAX_REMINDER_RULES)
+        .superRefine((rules, context) => {
+          const keys = new Set<string>();
+          for (const [index, rule] of rules.entries()) {
+            const key = `${rule.channel}-${rule.offsetMinutes}`;
+            if (keys.has(key)) {
+              context.addIssue({
+                code: "custom",
+                message: "Reminder rules must be unique.",
+                path: [index],
+              });
+            }
+            keys.add(key);
+          }
+        })
+        .transform<BusinessReminderRule[]>((rules) =>
+          rules.map((rule) => ({
+            id: `${rule.channel.toLowerCase()}-${rule.offsetMinutes}`,
+            channel: rule.channel,
+            offsetMinutes: rule.offsetMinutes,
+          })),
+        ),
+    ),
   })
   .strict();
 

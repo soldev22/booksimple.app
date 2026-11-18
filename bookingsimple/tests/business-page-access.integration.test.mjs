@@ -189,6 +189,11 @@ test("business settings pages and APIs enforce tenant roles",
           name: "Updated runtime business",
           timezone: "America/New_York",
           currency: "USD",
+          defaultDepositPercentage: 25,
+          reminderRules: [
+            { channel: "EMAIL", offsetMinutes: 1440 },
+            { channel: "SMS", offsetMinutes: 120 },
+          ],
         }),
       });
       assert.equal(update.status, 200);
@@ -202,6 +207,8 @@ test("business settings pages and APIs enforce tenant roles",
             name: "Forbidden",
             timezone: "Europe/London",
             currency: "GBP",
+            defaultDepositPercentage: 25,
+            reminderRules: [],
             tenantId: randomUUID(),
           }),
         },
@@ -212,6 +219,15 @@ test("business settings pages and APIs enforce tenant roles",
       assert.equal(staffRead.status, 200);
       const staffData = await staffRead.json();
       assert.equal(staffData.business.name, "Updated runtime business");
+      assert.deepEqual(
+        staffData.business.reminderRules.map(
+          ({ channel, offsetMinutes }) => ({ channel, offsetMinutes }),
+        ),
+        [
+          { channel: "EMAIL", offsetMinutes: 1440 },
+          { channel: "SMS", offsetMinutes: 120 },
+        ],
+      );
       assert.equal(staffData.business.canManage, false);
       assert.deepEqual(staffData.invitations, []);
 
@@ -221,6 +237,8 @@ test("business settings pages and APIs enforce tenant roles",
           name: "Forbidden",
           timezone: "Europe/London",
           currency: "GBP",
+          defaultDepositPercentage: 25,
+          reminderRules: [],
         }),
       });
       assert.equal(staffUpdate.status, 403);

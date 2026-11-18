@@ -468,6 +468,8 @@ async function createRegistration(
       memberCount: 0,
       timezone: DEFAULT_BUSINESS_TIMEZONE,
       currency: DEFAULT_BUSINESS_CURRENCY,
+      defaultDepositPercentage: 0,
+      reminderRules: [],
       createdAt: now,
       updatedAt: now,
     };

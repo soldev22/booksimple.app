@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
+  DEFAULT_DEPOSIT_PERCENTAGE,
   type BusinessDocument,
 } from "../src/server/business-types";
 
@@ -22,7 +23,12 @@ async function run(): Promise<void> {
   );
   let updated = 0;
   for (const business of businesses) {
-    if (business.timezone && business.currency) {
+    if (
+      business.timezone &&
+      business.currency &&
+      business.defaultDepositPercentage !== undefined &&
+      business.reminderRules !== undefined
+    ) {
       continue;
     }
     const current = await controlContainer()
@@ -38,6 +44,10 @@ async function run(): Promise<void> {
           ...current.resource,
           timezone: current.resource.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
           currency: current.resource.currency ?? DEFAULT_BUSINESS_CURRENCY,
+          defaultDepositPercentage:
+            current.resource.defaultDepositPercentage ??
+            DEFAULT_DEPOSIT_PERCENTAGE,
+          reminderRules: current.resource.reminderRules ?? [],
           updatedAt: new Date().toISOString(),
         },
         current.etag,

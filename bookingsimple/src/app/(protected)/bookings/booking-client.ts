@@ -49,6 +49,27 @@ export function isBooking(value: unknown): value is BookingView {
     Number.isSafeInteger(value.totalAmountMinor) &&
     "currency" in value &&
     typeof value.currency === "string" &&
+    "defaultDepositPercentage" in value &&
+    typeof value.defaultDepositPercentage === "number" &&
+    Number.isInteger(value.defaultDepositPercentage) &&
+    value.defaultDepositPercentage >= 0 &&
+    value.defaultDepositPercentage <= 100 &&
+    "appliedDepositPercentage" in value &&
+    typeof value.appliedDepositPercentage === "number" &&
+    Number.isInteger(value.appliedDepositPercentage) &&
+    value.appliedDepositPercentage >= 0 &&
+    value.appliedDepositPercentage <= 100 &&
+    "depositAmountMinor" in value &&
+    typeof value.depositAmountMinor === "number" &&
+    Number.isSafeInteger(value.depositAmountMinor) &&
+    value.depositAmountMinor >= 0 &&
+    "depositOverridden" in value &&
+    typeof value.depositOverridden === "boolean" &&
+    (!value.depositOverridden ||
+      ("depositOverriddenByUsername" in value &&
+        typeof value.depositOverriddenByUsername === "string" &&
+        "depositOverriddenAt" in value &&
+        typeof value.depositOverriddenAt === "string")) &&
     "createdAt" in value &&
     typeof value.createdAt === "string" &&
     "updatedAt" in value &&

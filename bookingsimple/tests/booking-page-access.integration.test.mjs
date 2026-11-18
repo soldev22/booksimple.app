@@ -19,6 +19,9 @@ import {
 } from "../src/server/conversation-storage.ts";
 import { customerContainer } from "../src/server/customer-storage.ts";
 import { serviceContainer } from "../src/server/service-storage.ts";
+import { paymentContainer } from "../src/server/payment-storage.ts";
+import { processDueReminders } from "../src/server/reminder-service.ts";
+import { reminderContainer } from "../src/server/reminder-storage.ts";
 
 const baseUrl = process.env.AUTH_PAGE_TEST_BASE_URL;
 
@@ -74,6 +77,14 @@ test(
       [tenantB, new Set()],
     ]);
     const bookingIds = new Map([
+      [tenantA, new Set()],
+      [tenantB, new Set()],
+    ]);
+    const paymentIds = new Map([
+      [tenantA, new Set()],
+      [tenantB, new Set()],
+    ]);
+    const reminderIds = new Map([
       [tenantA, new Set()],
       [tenantB, new Set()],
     ]);
@@ -143,6 +154,28 @@ test(
           memberCount: 1,
           timezone: timeZone,
           currency,
+          defaultDepositPercentage: tenantId === tenantA ? 25 : 0,
+          reminderRules:
+            tenantId === tenantA
+              ? [
+                  {
+                    id: "email-10080",
+                    channel: "EMAIL",
+                    offsetMinutes: 10080,
+                  },
+                  {
+                    id: "sms-120",
+                    channel: "SMS",
+                    offsetMinutes: 120,
+                  },
+                ]
+              : [
+                  {
+                    id: "whatsapp-60",
+                    channel: "WHATSAPP",
+                    offsetMinutes: 60,
+                  },
+                ],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -245,8 +278,45 @@ test(
       assert.equal(bookingA.durationMinutes, 60);
       assert.equal(bookingA.totalAmountMinor, 2550);
       assert.equal(bookingA.currency, "GBP");
+      assert.equal(bookingA.defaultDepositPercentage, 25);
+      assert.equal(bookingA.appliedDepositPercentage, 25);
+      assert.equal(bookingA.depositAmountMinor, 638);
+      assert.equal(bookingA.depositOverridden, false);
       assert.equal(bookingA.status, "PENDING");
       assert.equal(bookingA.conversationId, conversation.id);
+      const reminderResponseA = await request(
+        `/api/reminders?bookingId=${bookingA.id}`,
+        sessionA.token,
+      );
+      assert.equal(reminderResponseA.status, 200);
+      const initialRemindersA = (await reminderResponseA.json()).reminders;
+      for (const reminder of initialRemindersA) {
+        reminderIds.get(tenantA).add(reminder.id);
+      }
+      assert.deepEqual(
+        initialRemindersA.map(
+          ({ channel, scheduledFor, status, provider }) => ({
+            channel,
+            scheduledFor,
+            status,
+            provider,
+          }),
+        ),
+        [
+          {
+            channel: "EMAIL",
+            scheduledFor: "2026-11-24T10:00:00.000Z",
+            status: "PENDING",
+            provider: "MOCK_TEST",
+          },
+          {
+            channel: "SMS",
+            scheduledFor: "2026-12-01T08:00:00.000Z",
+            status: "PENDING",
+            provider: "MOCK_TEST",
+          },
+        ],
+      );
 
       const mismatch = await request("/api/bookings", sessionA.token, {
         method: "POST",
@@ -266,6 +336,26 @@ test(
       });
       const bookingB = createdB.booking;
       assert.equal(bookingB.startAt, "2026-12-01T15:00:00.000Z");
+      assert.equal(bookingB.depositAmountMinor, 0);
+      const reminderResponseB = await request(
+        `/api/reminders?bookingId=${bookingB.id}`,
+        sessionB.token,
+      );
+      assert.equal(reminderResponseB.status, 200);
+      const remindersB = (await reminderResponseB.json()).reminders;
+      for (const reminder of remindersB) {
+        reminderIds.get(tenantB).add(reminder.id);
+      }
+      assert.equal(remindersB.length, 1);
+      assert.equal(
+        (
+          await request(
+            `/api/reminders?bookingId=${bookingB.id}`,
+            sessionA.token,
+          )
+        ).status,
+        404,
+      );
 
       const listA = await request("/api/bookings", sessionA.token);
       assert.equal(listA.status, 200);
@@ -323,6 +413,19 @@ test(
       );
       assert.equal(
         (
+          await request(
+            `/api/bookings/${bookingB.id}/deposit`,
+            sessionA.token,
+            {
+              method: "POST",
+              body: JSON.stringify({ percentage: 50 }),
+            },
+          )
+        ).status,
+        404,
+      );
+      assert.equal(
+        (
           await request("/api/bookings", sessionA.token, {
             method: "POST",
             body: JSON.stringify({
@@ -353,6 +456,281 @@ test(
       assert.equal(updatedA.endAt, "2026-12-01T14:00:00.000Z");
       assert.equal(updatedA.durationMinutes, 90);
       assert.equal(updatedA.totalAmountMinor, 4000);
+      assert.equal(updatedA.defaultDepositPercentage, 25);
+      assert.equal(updatedA.appliedDepositPercentage, 25);
+      assert.equal(updatedA.depositAmountMinor, 1000);
+      const rescheduledReminders = (
+        await (
+          await request(
+            `/api/reminders?bookingId=${bookingA.id}`,
+            sessionA.token,
+          )
+        ).json()
+      ).reminders;
+      assert.deepEqual(
+        rescheduledReminders.map(
+          ({ channel, scheduledFor }) => ({ channel, scheduledFor }),
+        ),
+        [
+          {
+            channel: "EMAIL",
+            scheduledFor: "2026-11-24T12:30:00.000Z",
+          },
+          {
+            channel: "SMS",
+            scheduledFor: "2026-12-01T10:30:00.000Z",
+          },
+        ],
+      );
+      const firstReminderRun = await processDueReminders({
+        tenantId: tenantA,
+        now: "2026-11-30T00:00:00.000Z",
+      });
+      assert.deepEqual(firstReminderRun, {
+        claimed: 1,
+        sent: 1,
+        cancelled: 0,
+        failed: 0,
+      });
+      assert.deepEqual(
+        await processDueReminders({
+          tenantId: tenantA,
+          now: "2026-11-30T00:00:00.000Z",
+        }),
+        {
+          claimed: 0,
+          sent: 0,
+          cancelled: 0,
+          failed: 0,
+        },
+      );
+
+      const overrideA = await request(
+        `/api/bookings/${bookingA.id}/deposit`,
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ percentage: 1 }),
+        },
+      );
+      assert.equal(overrideA.status, 200);
+      const overriddenA = (await overrideA.json()).booking;
+      assert.equal(overriddenA.defaultDepositPercentage, 25);
+      assert.equal(overriddenA.appliedDepositPercentage, 1);
+      assert.equal(overriddenA.depositAmountMinor, 40);
+      assert.equal(overriddenA.depositOverridden, true);
+      assert.equal(overriddenA.depositOverriddenByUsername, userA.membership.username);
+      assert.ok(Date.parse(overriddenA.depositOverriddenAt));
+
+      const paymentRequest = await request(
+        "/api/payments",
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ bookingId: bookingA.id }),
+        },
+      );
+      assert.equal(paymentRequest.status, 201);
+      const paymentA = (await paymentRequest.json()).payment;
+      paymentIds.get(tenantA).add(paymentA.id);
+      assert.equal(paymentA.paymentType, "DEPOSIT");
+      assert.equal(paymentA.amountMinor, 40);
+      assert.equal(paymentA.currency, "GBP");
+      assert.equal(paymentA.status, "PENDING");
+      assert.equal(paymentA.provider, "MOCK_TEST");
+      assert.equal(paymentA.simulated, true);
+
+      const duplicateRequest = await request(
+        "/api/payments",
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ bookingId: bookingA.id }),
+        },
+      );
+      assert.equal(duplicateRequest.status, 201);
+      assert.equal(
+        (await duplicateRequest.json()).payment.id,
+        paymentA.id,
+      );
+
+      const awaitingBooking = await request(
+        `/api/bookings/${bookingA.id}`,
+        sessionA.token,
+      );
+      assert.equal(awaitingBooking.status, 200);
+      assert.equal(
+        (await awaitingBooking.json()).booking.status,
+        "AWAITING_DEPOSIT",
+      );
+
+      assert.equal(
+        (
+          await request(
+            `/api/bookings/${bookingA.id}/deposit`,
+            sessionA.token,
+            {
+              method: "POST",
+              body: JSON.stringify({ percentage: 50 }),
+            },
+          )
+        ).status,
+        409,
+      );
+      assert.equal(
+        (
+          await request(
+            `/api/bookings/${bookingA.id}`,
+            sessionA.token,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                customerId: customerA.id,
+                serviceId: serviceA.id,
+                startLocal: "2026-12-01T13:00",
+              }),
+            },
+          )
+        ).status,
+        409,
+      );
+      assert.equal(
+        (
+          await request("/api/payments", sessionB.token, {
+            method: "POST",
+            body: JSON.stringify({ bookingId: bookingB.id }),
+          })
+        ).status,
+        409,
+      );
+      const zeroDepositBalanceRequest = await request(
+        "/api/payments",
+        sessionB.token,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            bookingId: bookingB.id,
+            paymentType: "BALANCE",
+          }),
+        },
+      );
+      assert.equal(zeroDepositBalanceRequest.status, 201);
+      const zeroDepositBalance =
+        (await zeroDepositBalanceRequest.json()).payment;
+      paymentIds.get(tenantB).add(zeroDepositBalance.id);
+      assert.equal(zeroDepositBalance.paymentType, "BALANCE");
+      assert.equal(zeroDepositBalance.amountMinor, 1500);
+      assert.equal(zeroDepositBalance.currency, "USD");
+      assert.equal(
+        (
+          await request("/api/payments", sessionA.token, {
+            method: "POST",
+            body: JSON.stringify({
+              bookingId: bookingA.id,
+              paymentType: "BALANCE",
+            }),
+          })
+        ).status,
+        409,
+      );
+      assert.equal(
+        (
+          await request(
+            `/api/payments?bookingId=${bookingA.id}`,
+            sessionB.token,
+          )
+        ).status,
+        404,
+      );
+      assert.equal(
+        (
+          await request(
+            `/api/payments/${paymentA.id}/simulate`,
+            sessionB.token,
+            {
+              method: "POST",
+              body: JSON.stringify({ eventId: randomUUID() }),
+            },
+          )
+        ).status,
+        404,
+      );
+
+      const eventId = randomUUID();
+      const simulatedPayment = await request(
+        `/api/payments/${paymentA.id}/simulate`,
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ eventId }),
+        },
+      );
+      assert.equal(simulatedPayment.status, 200);
+      const paidPayment = (await simulatedPayment.json()).payment;
+      assert.equal(paidPayment.status, "PAID");
+      assert.ok(Date.parse(paidPayment.paidAt));
+
+      const duplicateNotification = await request(
+        `/api/payments/${paymentA.id}/simulate`,
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ eventId }),
+        },
+      );
+      assert.equal(duplicateNotification.status, 200);
+      assert.equal(
+        (await duplicateNotification.json()).payment.paidAt,
+        paidPayment.paidAt,
+      );
+
+      const confirmedBooking = await request(
+        `/api/bookings/${bookingA.id}`,
+        sessionA.token,
+      );
+      assert.equal(confirmedBooking.status, 200);
+      assert.equal(
+        (await confirmedBooking.json()).booking.status,
+        "CONFIRMED",
+      );
+
+      const balanceRequest = await request(
+        "/api/payments",
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            bookingId: bookingA.id,
+            paymentType: "BALANCE",
+          }),
+        },
+      );
+      assert.equal(balanceRequest.status, 201);
+      const balancePayment = (await balanceRequest.json()).payment;
+      paymentIds.get(tenantA).add(balancePayment.id);
+      assert.equal(balancePayment.paymentType, "BALANCE");
+      assert.equal(balancePayment.amountMinor, 3960);
+      const paidBalanceResponse = await request(
+        `/api/payments/${balancePayment.id}/simulate`,
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ eventId: randomUUID() }),
+        },
+      );
+      assert.equal(paidBalanceResponse.status, 200);
+      assert.equal(
+        (await paidBalanceResponse.json()).payment.status,
+        "PAID",
+      );
+      const bookingAfterBalance = await request(
+        `/api/bookings/${bookingA.id}`,
+        sessionA.token,
+      );
+      assert.equal(
+        (await bookingAfterBalance.json()).booking.status,
+        "CONFIRMED",
+      );
 
       const cancelA = await request(
         `/api/bookings/${bookingA.id}/status`,
@@ -364,6 +742,24 @@ test(
       );
       assert.equal(cancelA.status, 200);
       assert.equal((await cancelA.json()).booking.status, "CANCELLED");
+      const cancelledReminders = (
+        await (
+          await request(
+            `/api/reminders?bookingId=${bookingA.id}`,
+            sessionA.token,
+          )
+        ).json()
+      ).reminders;
+      assert.deepEqual(
+        cancelledReminders.map(({ channel, status }) => ({
+          channel,
+          status,
+        })),
+        [
+          { channel: "EMAIL", status: "SENT" },
+          { channel: "SMS", status: "CANCELLED" },
+        ],
+      );
       const editCancelled = await request(
         `/api/bookings/${bookingA.id}`,
         sessionA.token,
@@ -386,6 +782,19 @@ test(
         },
       );
       assert.equal(reopenCancelled.status, 409);
+      assert.equal(
+        (
+          await request(
+            `/api/bookings/${bookingA.id}/deposit`,
+            sessionA.token,
+            {
+              method: "POST",
+              body: JSON.stringify({ percentage: 50 }),
+            },
+          )
+        ).status,
+        409,
+      );
 
       const storedA = (
         await bookingContainer().item(bookingA.id, tenantA).read()
@@ -394,7 +803,30 @@ test(
       assert.equal(storedA.customerId, customerA.id);
       assert.equal(storedA.serviceId, replacementServiceA.id);
       assert.equal(storedA.status, "CANCELLED");
+      assert.equal(storedA.schemaVersion, 2);
+      assert.equal(storedA.defaultDepositPercentage, 25);
+      assert.equal(storedA.appliedDepositPercentage, 1);
+      assert.equal(storedA.depositAmountMinor, 40);
+      assert.equal(storedA.depositOverridden, true);
+      assert.equal(storedA.depositOverriddenByUserId, userA.userId);
+      const storedPayment = (
+        await paymentContainer().item(paymentA.id, tenantA).read()
+      ).resource;
+      assert.equal(storedPayment.tenantId, tenantA);
+      assert.equal(storedPayment.bookingId, bookingA.id);
+      assert.equal(storedPayment.status, "PAID");
+      assert.equal(storedPayment.providerEventId, eventId);
     } finally {
+      for (const [tenantId, ids] of reminderIds) {
+        for (const id of ids) {
+          await reminderContainer().item(id, tenantId).delete().catch(() => {});
+        }
+      }
+      for (const [tenantId, ids] of paymentIds) {
+        for (const id of ids) {
+          await paymentContainer().item(id, tenantId).delete().catch(() => {});
+        }
+      }
       for (const [tenantId, ids] of bookingIds) {
         for (const id of ids) {
           await bookingContainer().item(id, tenantId).delete().catch(() => {});

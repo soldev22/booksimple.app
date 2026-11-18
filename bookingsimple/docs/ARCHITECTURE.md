@@ -202,8 +202,7 @@ platform-administrator access must also be verified and audited. Use
 parameterized queries; never trust a tenant identifier or partition key
 supplied by the browser as authorization.
 
-The implemented domain container layouts are selected below; keys for future
-payment and reminder containers are **not yet selected**. A user
+The implemented domain container layouts are selected below. A user
 can belong to at most one business, while platform identity, pending
 applications and platform-administrator access are not ordinary tenant-owned
 records. Their lookup and storage still require deliberate design.
@@ -247,6 +246,8 @@ Business-domain containers have no default TTL.
 | `conversations` | Server-resolved Business GUID followed by Conversation GUID in a version 2 MultiHash key | Conversation summaries and separate Message documents; durable synthetic Stage 8 data with no automatic expiry |
 | `channel-identities` | Server-resolved active Business GUID in `/tenantId` | Deterministic provider-neutral contact identities and optional Customer links; durable with no automatic expiry |
 | `bookings` | Server-resolved active Business GUID in `/tenantId` | Durable Booking references, UTC instants, timezone and Service snapshots; no automatic expiry |
+| `payments` | Server-resolved active Business GUID in `/tenantId` | Durable provider-safe Payment records and mock references; no card details or automatic expiry |
+| `reminders` | Server-resolved active Business GUID in `/tenantId` | Durable Booking reminder schedules, processing attempts and mock delivery results; no automatic expiry |
 
 The plain-language record inventory, sensitivity classifications and retention
 matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
@@ -377,7 +378,30 @@ Cancellation retains the record, and completed, cancelled and no-show details
 are immutable. ETags protect all edits and status replacements.
 
 Stage 9 deliberately excludes availability conflict detection, staff/resource
-assignment, locations, notes, recurrence, deposits and payments.
+assignment, locations, notes, recurrence and payments.
+
+## Implemented Deposit Engine
+
+The Business document stores `defaultDepositPercentage` as an integer from 0
+through 100. It defaults to 0 for new and migrated Businesses and is editable
+only through the existing company-administrator Business settings boundary.
+
+Booking schema version 2 stores the Business default captured at creation, the
+applied percentage, calculated amount in minor units and explicit override
+state. The calculation rounds half up to the nearest minor unit and avoids
+unsafe intermediate multiplication near JavaScript's safe-integer boundary.
+Changing the Business default does not query or mutate existing Bookings.
+
+Any active company member may override a non-terminal Booking. The dedicated
+mutation point-reads the Booking in the authenticated tenant partition, writes
+the authenticated user ID, member username and timestamp, and uses the existing
+ETag for optimistic concurrency. Completed, cancelled and no-show terms are
+immutable. Selecting a new Service recalculates the required amount from the
+Booking's preserved applied percentage.
+
+Stage 10 does not create Payment records, collect money or infer payment
+success. Legacy schema-version-1 Bookings migrate to explicit 0% terms because
+the earlier schema had no deposit obligation.
 
 Approval spans account and business partitions, so it is not globally atomic.
 For a new membership it reserves a generated member username, records the
@@ -964,13 +988,18 @@ Booking
   status
   totalAmount
   currency
-  depositPercentage
-  depositAmount
-  depositStatus
+  defaultDepositPercentage
+  appliedDepositPercentage
+  depositAmountMinor
+  depositOverridden
+  depositOverriddenByUserId
+  depositOverriddenByUsername
+  depositOverriddenAt
   createdAt
   updatedAt
 
-The final database schema will be refined before implementation.
+The implemented schema stores these deposit terms directly on schema-version-2
+Booking documents. Payment status remains a separate future domain.
 
 Do not derive historic deposit requirements dynamically from today's business settings.
 
@@ -984,8 +1013,7 @@ Business-level deposit configuration should be separate from individual bookings
 
 Conceptually:
 
-BusinessBookingSettings
-  tenantId
+Business
   defaultDepositPercentage
 
 Valid percentage:
@@ -1000,7 +1028,9 @@ This preserves booking history if business settings later change.
 
 # 20. Deposit Override
 
-An authorised user may override the normal deposit percentage for an individual booking.
+Any active company user may override the normal deposit percentage for a
+non-terminal individual Booking. Company administrators alone change the
+Business default.
 
 Conceptually retain:
 
@@ -1071,7 +1101,45 @@ PAID
 FAILED
 REFUNDED
 
-Exact lifecycle will be defined when payment integration is implemented.
+## Implemented Payment Domain and Stripe Connect
+
+Payments are separate schema-version-1 documents in the dedicated `payments`
+container partitioned by the server-resolved `/tenantId`. Each record stores a
+Booking ID reference, safe integer minor-unit amount, currency, explicit
+status, provider identity and provider-safe external reference. Card, bank and
+credential data are prohibited.
+
+The provider-neutral adapter boundary supports the explicit `MOCK_TEST` local
+provider and Stripe-hosted Checkout. `PAYMENT_PROVIDER` selects one provider;
+the application never treats a browser return URL as payment confirmation.
+`DEPOSIT` Payments snapshot the Booking deposit. `BALANCE` Payments are
+available only after a positive deposit is paid, or for the full Booking amount
+when the Booking has a 0% deposit. A 100% paid deposit leaves no balance.
+
+Deterministic `deposit-<bookingId>` and `balance-<bookingId>` IDs make create
+retries idempotent within the tenant partition. Mock success and signed Stripe
+events use ETag-guarded transitions, retain a bounded set of processed event
+IDs, preserve the first `paidAt`, and never downgrade `PAID` after an
+out-of-order failure. The paid Payment remains the source of truth for
+retry-safe Booking reconciliation.
+
+Creating a pending deposit Payment moves the Booking to
+`AWAITING_DEPOSIT`; successful simulation moves it to `CONFIRMED`. Deposit
+overrides and Service changes are rejected after a pending or paid deposit
+Payment exists, preserving the snapshotted financial terms.
+
+Each tenant onboards its own Stripe Accounts v2 Merchant account through
+Stripe-hosted onboarding. The account uses the full Stripe Dashboard, direct
+charges, Stripe fee and loss collection, and no BookSimple application fee.
+Test and live account references are stored separately on the Business; secret
+keys and one-time onboarding or Checkout URLs are not persisted.
+
+Checkout Sessions are created on the connected account with server-derived
+amount, currency and metadata. Connect webhooks read the exact raw body and
+verify `Stripe-Signature`, connected account, test/live mode, tenant, Booking,
+Payment, Session, amount and currency before an ETag transition. The signed
+webhook is the sole authority for `PAID`; a redirect back to the Booking only
+causes the UI to reload provider-backed state.
 
 ---
 
@@ -1094,6 +1162,27 @@ Reminder
   createdAt
 
 The background processor should find due reminders and dispatch them through the messaging abstraction.
+
+The implemented Stage 12 container uses `/tenantId`. Company administrators
+configure at most five default rules on the Business, each with a unique
+channel and elapsed-minute offset from 1 through 10,080 minutes. Supported
+labels are EMAIL, SMS, WHATSAPP and META. New Bookings create deterministic
+Reminder IDs from the Booking and snapshotted rule; later Business changes do
+not rewrite existing records.
+
+Reminder schedules are calculated from the Booking's UTC start instant while
+retaining its IANA timezone for display. Changing a Booking time reschedules
+unsent records from their snapshotted offsets. Completed, cancelled and no-show
+Bookings cancel unsent reminders; sent records remain history.
+
+`npm run process:reminders` is a server-side worker entry point suitable for an
+external scheduler. It queries due records across tenant partitions under the
+application's service identity, then point-reads and ETag-claims each record
+with a five-minute processing lease. Before delivery it rechecks the owning
+Booking and current schedule. The Stage 12 `MOCK_TEST` provider records a
+deterministic mock reference but sends no customer message. Retry delays use
+bounded exponential backoff, stale leases are recoverable, and a sent record
+is never selected again.
 
 ---
 

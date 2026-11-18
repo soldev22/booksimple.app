@@ -26,15 +26,29 @@ import {
   type BookingView,
 } from "./booking-types";
 import type {
+  BookingDepositOverrideInput,
   BookingListInput,
   BookingMutationInput,
   BookingUpdateInput,
 } from "./booking-validation";
-import type { BusinessDocument } from "./business-types";
+import {
+  DEFAULT_DEPOSIT_PERCENTAGE,
+  type BusinessDocument,
+} from "./business-types";
 import { getCustomer } from "./customer-service";
 import { readConversationDocument } from "./conversation-storage";
-import { isCurrencyCode } from "./money";
+import {
+  calculatePercentageAmountMinor,
+  isCurrencyCode,
+} from "./money";
+import { queryBookingPayments } from "./payment-storage";
 import { getService } from "./service-service";
+import {
+  cancelBookingReminders,
+  createBookingReminders,
+  deleteBookingReminders,
+  rescheduleBookingReminders,
+} from "./reminder-service";
 import { requireTenantContext } from "./tenant-context";
 
 const NON_EDITABLE_STATUSES: BookingStatus[] = [
@@ -77,6 +91,27 @@ function isBookingDocument(
     Number.isSafeInteger(document.totalAmountMinor) &&
     document.totalAmountMinor >= 0 &&
     isCurrencyCode(document.currency) &&
+    Number.isInteger(document.defaultDepositPercentage) &&
+    document.defaultDepositPercentage >= 0 &&
+    document.defaultDepositPercentage <= 100 &&
+    Number.isInteger(document.appliedDepositPercentage) &&
+    document.appliedDepositPercentage >= 0 &&
+    document.appliedDepositPercentage <= 100 &&
+    Number.isSafeInteger(document.depositAmountMinor) &&
+    document.depositAmountMinor >= 0 &&
+    document.depositAmountMinor ===
+      calculatePercentageAmountMinor(
+        document.totalAmountMinor,
+        document.appliedDepositPercentage,
+      ) &&
+    typeof document.depositOverridden === "boolean" &&
+    (document.depositOverridden
+      ? typeof document.depositOverriddenByUserId === "string" &&
+        typeof document.depositOverriddenByUsername === "string" &&
+        typeof document.depositOverriddenAt === "string"
+      : document.depositOverriddenByUserId === undefined &&
+        document.depositOverriddenByUsername === undefined &&
+        document.depositOverriddenAt === undefined) &&
     typeof document.createdAt === "string" &&
     typeof document.updatedAt === "string"
   );
@@ -91,7 +126,9 @@ async function readOwnedBooking(context: TenantContext, id: string) {
   return result;
 }
 
-async function bookingTimeZone(context: TenantContext): Promise<string> {
+async function bookingBusiness(
+  context: TenantContext,
+): Promise<BusinessDocument> {
   const business = await readDocument<BusinessDocument>(
     controlContainer(),
     context.tenantId,
@@ -104,13 +141,30 @@ async function bookingTimeZone(context: TenantContext): Promise<string> {
   ) {
     throw bookingError(404, "The active Business was not found.");
   }
-  if (
-    typeof business.document.timezone !== "string" ||
-    !isTimeZone(business.document.timezone)
-  ) {
+  return business.document;
+}
+
+function businessTimeZone(business: BusinessDocument): string {
+  if (typeof business.timezone !== "string" || !isTimeZone(business.timezone)) {
     throw bookingError(503, "The Business timezone is invalid.");
   }
-  return business.document.timezone;
+  return business.timezone;
+}
+
+function businessDepositPercentage(business: BusinessDocument): number {
+  const percentage =
+    business.defaultDepositPercentage ?? DEFAULT_DEPOSIT_PERCENTAGE;
+  if (
+    !Number.isInteger(percentage) ||
+    percentage < 0 ||
+    percentage > 100
+  ) {
+    throw bookingError(
+      503,
+      "The Business default deposit percentage is invalid.",
+    );
+  }
+  return percentage;
 }
 
 function startAtFromLocal(startLocal: string, timeZone: string): string {
@@ -156,6 +210,12 @@ async function toBookingView(
     status: document.status,
     totalAmountMinor: document.totalAmountMinor,
     currency: document.currency,
+    defaultDepositPercentage: document.defaultDepositPercentage,
+    appliedDepositPercentage: document.appliedDepositPercentage,
+    depositAmountMinor: document.depositAmountMinor,
+    depositOverridden: document.depositOverridden,
+    depositOverriddenByUsername: document.depositOverriddenByUsername,
+    depositOverriddenAt: document.depositOverriddenAt,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
   };
@@ -197,7 +257,7 @@ export async function listBookingsForContext(
   context: TenantContext,
   input: BookingListInput,
 ): Promise<BookingPage> {
-  const timeZone = await bookingTimeZone(context);
+  const timeZone = businessTimeZone(await bookingBusiness(context));
   const filters = ["c.type = @type"];
   const parameters: { name: string; value: string | number | boolean | null }[] =
     [{ name: "@type", value: "booking" }];
@@ -260,16 +320,18 @@ export async function createBooking(
   input: BookingMutationInput,
 ): Promise<BookingView> {
   const context = await contextForRequest(request);
-  const [customer, service, timeZone] = await Promise.all([
+  const [customer, service, business] = await Promise.all([
     getCustomer(context, input.customerId),
     getService(context, input.serviceId),
-    bookingTimeZone(context),
+    bookingBusiness(context),
     validateConversationOrigin(
       context,
       input.conversationId,
       input.customerId,
     ),
   ]);
+  const timeZone = businessTimeZone(business);
+  const defaultDepositPercentage = businessDepositPercentage(business);
   if (customer.status !== "active") {
     throw bookingError(409, "Only an active Customer can be booked.");
   }
@@ -293,13 +355,33 @@ export async function createBooking(
     status: "PENDING",
     totalAmountMinor: service.priceMinor,
     currency: service.currency,
+    defaultDepositPercentage,
+    appliedDepositPercentage: defaultDepositPercentage,
+    depositAmountMinor: calculatePercentageAmountMinor(
+      service.priceMinor,
+      defaultDepositPercentage,
+    ),
+    depositOverridden: false,
     createdAt: now,
     updatedAt: now,
   };
   try {
+    await createBookingReminders(document, business.reminderRules ?? []);
     const created = await createBookingDocument(document);
     return toBookingView(context, created.document);
   } catch (error) {
+    await deleteBookingReminders(context.tenantId, document.id).catch(
+      (cleanupError) => {
+        console.error({
+          event: "booking-reminder-rollback-failed",
+          bookingId: document.id,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.name
+              : "UnknownError",
+        });
+      },
+    );
     if (isConflict(error)) {
       throw bookingError(409, "The Booking could not be created. Retry.");
     }
@@ -351,9 +433,25 @@ export async function updateBooking(
     current.document.timeZone,
   );
   const serviceChanged = input.serviceId !== current.document.serviceId;
+  if (
+    serviceChanged &&
+    (await queryBookingPayments(context.tenantId, id)).some(
+      (payment) =>
+        payment.paymentType === "DEPOSIT" &&
+        (payment.status === "PENDING" || payment.status === "PAID"),
+    )
+  ) {
+    throw bookingError(
+      409,
+      "The Service cannot change after a deposit Payment request exists.",
+    );
+  }
   const durationMinutes = serviceChanged
     ? service.durationMinutes
     : current.document.durationMinutes;
+  const totalAmountMinor = serviceChanged
+    ? service.priceMinor
+    : current.document.totalAmountMinor;
   const next: BookingDocument = {
     ...current.document,
     customerId: input.customerId,
@@ -361,16 +459,19 @@ export async function updateBooking(
     startAt,
     endAt: endAtFromStart(startAt, durationMinutes),
     durationMinutes,
-    totalAmountMinor: serviceChanged
-      ? service.priceMinor
-      : current.document.totalAmountMinor,
+    totalAmountMinor,
     currency: serviceChanged
       ? service.currency
       : current.document.currency,
+    depositAmountMinor: calculatePercentageAmountMinor(
+      totalAmountMinor,
+      current.document.appliedDepositPercentage,
+    ),
     updatedAt: new Date().toISOString(),
   };
   try {
     const updated = await replaceBookingDocument(next, current.etag);
+    await rescheduleBookingReminders(updated.document);
     return toBookingView(context, updated.document);
   } catch (error) {
     if (isPreconditionFailed(error)) {
@@ -378,6 +479,116 @@ export async function updateBooking(
     }
     throw error;
   }
+}
+
+export async function overrideBookingDeposit(
+  request: Request,
+  id: string,
+  input: BookingDepositOverrideInput,
+): Promise<BookingView> {
+  const viewer = await getRequestViewer(request);
+  const context = requireTenantContext(viewer);
+  const current = await readOwnedBooking(context, id);
+  if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
+    throw bookingError(
+      409,
+      "Completed, cancelled and no-show Booking deposits cannot be changed.",
+    );
+  }
+  if (
+    (await queryBookingPayments(context.tenantId, id)).some(
+      (payment) =>
+        payment.paymentType === "DEPOSIT" &&
+        (payment.status === "PENDING" || payment.status === "PAID"),
+    )
+  ) {
+    throw bookingError(
+      409,
+      "Deposit terms cannot change after a Payment request exists.",
+    );
+  }
+  if (!viewer) {
+    throw bookingError(401, "Sign in is required.");
+  }
+  const now = new Date().toISOString();
+  try {
+    const updated = await replaceBookingDocument(
+      {
+        ...current.document,
+        appliedDepositPercentage: input.percentage,
+        depositAmountMinor: calculatePercentageAmountMinor(
+          current.document.totalAmountMinor,
+          input.percentage,
+        ),
+        depositOverridden: true,
+        depositOverriddenByUserId: viewer.user.id,
+        depositOverriddenByUsername: context.username,
+        depositOverriddenAt: now,
+        updatedAt: now,
+      },
+      current.etag,
+    );
+    return toBookingView(context, updated.document);
+  } catch (error) {
+    if (isPreconditionFailed(error)) {
+      throw bookingError(409, "The Booking changed. Refresh and retry.");
+    }
+    throw error;
+  }
+}
+
+async function transitionBookingForPayment(
+  context: TenantContext,
+  id: string,
+  target: "AWAITING_DEPOSIT" | "CONFIRMED",
+): Promise<BookingView> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await readOwnedBooking(context, id);
+    if (current.document.status === target) {
+      return toBookingView(context, current.document);
+    }
+    if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
+      return toBookingView(context, current.document);
+    }
+    if (
+      target === "AWAITING_DEPOSIT" &&
+      current.document.status !== "PENDING"
+    ) {
+      throw bookingError(
+        409,
+        "The Booking is not ready for a deposit Payment request.",
+      );
+    }
+    try {
+      const updated = await replaceBookingDocument(
+        {
+          ...current.document,
+          status: target,
+          updatedAt: new Date().toISOString(),
+        },
+        current.etag,
+      );
+      return toBookingView(context, updated.document);
+    } catch (error) {
+      if (isPreconditionFailed(error)) continue;
+      throw error;
+    }
+  }
+  throw bookingError(409, "The Booking changed. Refresh and retry.");
+}
+
+export async function markBookingAwaitingDeposit(
+  context: TenantContext,
+  id: string,
+): Promise<BookingView> {
+  return transitionBookingForPayment(context, id, "AWAITING_DEPOSIT");
+}
+
+export async function confirmBookingFromPaidDeposit(
+  context: TenantContext,
+  id: string,
+): Promise<BookingView> {
+  return transitionBookingForPayment(context, id, "CONFIRMED");
 }
 
 export async function setBookingStatus(
@@ -388,6 +599,9 @@ export async function setBookingStatus(
   const context = await contextForRequest(request);
   const current = await readOwnedBooking(context, id);
   if (current.document.status === status) {
+    if (NON_EDITABLE_STATUSES.includes(status)) {
+      await cancelBookingReminders(context.tenantId, id);
+    }
     return toBookingView(context, current.document);
   }
   if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
@@ -405,6 +619,9 @@ export async function setBookingStatus(
       },
       current.etag,
     );
+    if (NON_EDITABLE_STATUSES.includes(status)) {
+      await cancelBookingReminders(context.tenantId, id);
+    }
     return toBookingView(context, updated.document);
   } catch (error) {
     if (isPreconditionFailed(error)) {

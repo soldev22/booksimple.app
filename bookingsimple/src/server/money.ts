@@ -16,6 +16,27 @@ export function isCurrencyCode(currency: string): boolean {
   return currencyFractionDigits(currency) !== null;
 }
 
+export function calculatePercentageAmountMinor(
+  totalAmountMinor: number,
+  percentage: number,
+): number {
+  if (
+    !Number.isSafeInteger(totalAmountMinor) ||
+    totalAmountMinor < 0 ||
+    !Number.isInteger(percentage) ||
+    percentage < 0 ||
+    percentage > 100
+  ) {
+    throw new Error("Amount or percentage is invalid.");
+  }
+  const wholeHundreds = Math.floor(totalAmountMinor / 100);
+  const remainder = totalAmountMinor % 100;
+  return (
+    wholeHundreds * percentage +
+    Math.floor((remainder * percentage + 50) / 100)
+  );
+}
+
 export function parsePriceToMinor(price: string, currency: string): number {
   const fractionDigits = currencyFractionDigits(currency);
   if (fractionDigits === null || !/^\d+(?:\.\d+)?$/.test(price)) {
