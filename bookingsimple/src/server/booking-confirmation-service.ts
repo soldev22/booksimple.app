@@ -83,9 +83,9 @@ function assertConfirmation(
   }
 }
 
-async function preferredConversation(
+export async function preferredBookingConversation(
   context: TenantContext,
-  booking: BookingView,
+  booking: Pick<BookingView, "customerId" | "conversationId">,
 ): Promise<ConversationView | null> {
   const provider = configuredMessagingProvider();
   if (booking.conversationId) {
@@ -187,7 +187,7 @@ export async function ensureBookingConfirmation(
 
   let conversation: ConversationView | null;
   try {
-    conversation = await preferredConversation(context, booking);
+    conversation = await preferredBookingConversation(context, booking);
   } catch (error) {
     console.error(
       JSON.stringify({

@@ -356,18 +356,22 @@ Business profile settings. Each rule selects EMAIL, SMS, WHATSAPP or META and
 an offset from 1 minute through 7 days. New Bookings snapshot the current
 rules; changing the defaults does not rewrite existing Bookings.
 
-Stage 12 delivery uses the explicitly simulated `MOCK_TEST` provider and sends
-no customer message. Due Reminder records are claimed and processed entirely
-server-side with:
+Stage 17 sends Email reminders through the configured messaging provider.
+Due Reminder records are claimed and processed entirely server-side with:
 
 ```powershell
 npm run process:reminders
 ```
 
-This command can be invoked by an external scheduler and does not require an
-open browser. Processing uses ETags and expiring leases, skips duplicate sends,
-reschedules unsent reminders when Booking time changes, and cancels unsent
-reminders for completed, cancelled or no-show Bookings.
+This command remains available for controlled operations. The deployed Vercel
+application also invokes `/api/internal/reminders/process` every minute through
+Vercel Cron. Set `CRON_SECRET` as a server-side Vercel secret; the Route Handler
+fails closed when the secret is absent or its bearer token is invalid.
+Processing uses ETags and expiring leases, skips duplicate sends, reschedules
+unsent reminders when Booking time changes, and cancels unsent reminders for
+completed, cancelled or no-show Bookings. Email delivery is linked to the
+Customer Conversation and Message. SMS, WhatsApp and Meta rules remain
+retryable failures until those provider adapters are connected.
 
 ### Email messaging
 
@@ -534,7 +538,7 @@ Do not automatically begin the next stage.
 
 Completed stage:
 
-STAGE 13 — Messaging Provider Interface
+STAGE 16 — Booking Confirmation Messaging
 
 Status:
 
@@ -542,13 +546,10 @@ COMPLETE.
 
 Current work:
 
-Stages 1 through 13 are implemented. The Payment provider can remain the
-clearly labelled `MOCK_TEST`, or be explicitly configured for tenant-owned
-Stripe Connect test accounts and hosted Checkout. Stripe sandbox validation is
-pending external configuration and production payments are not enabled.
-Reminder delivery remains deliberately simulated. The messaging-provider
-contract and mock adapter are complete, but no real communication channel is
-connected and Inbox replies remain local-only. Stage 14 has not started.
+STAGE 17 — Real Reminder Delivery is implemented. Deployment still requires a
+server-side `CRON_SECRET`, a Vercel redeployment and one controlled Postmark
+reminder validation before the stage is marked complete. Production Stripe
+payments remain outside the approved scope.
 
 ---
 

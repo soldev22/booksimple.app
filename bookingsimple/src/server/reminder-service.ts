@@ -7,10 +7,18 @@ import {
   StorageError,
 } from "./auth-storage";
 import type { TenantContext } from "./auth-types";
+import {
+  controlContainer,
+  readDocument,
+} from "./auth-storage";
 import { readBookingDocument } from "./booking-storage";
 import type { BookingDocument } from "./booking-types";
 import { isTimeZone } from "./booking-time";
-import { deliverMockReminder } from "./mock-reminder-provider";
+import type { BusinessDocument } from "./business-types";
+import {
+  deliverReminder,
+  ReminderDeliveryError,
+} from "./reminder-delivery";
 import {
   calculateReminderRetryAt,
   calculateReminderSchedule,
@@ -64,7 +72,8 @@ function isReminderDocument(
     isTimeZone(document.timeZone) &&
     Number.isFinite(Date.parse(document.scheduledFor)) &&
     REMINDER_STATUSES.includes(document.status) &&
-    document.provider === "MOCK_TEST" &&
+    (document.provider === "MOCK_TEST" ||
+      document.provider === "POSTMARK") &&
     Number.isSafeInteger(document.attemptCount) &&
     document.attemptCount >= 0 &&
     Number.isFinite(Date.parse(document.nextAttemptAt)) &&
@@ -393,13 +402,45 @@ async function processReminder(
     return "skipped";
   }
   try {
-    const delivery = await deliverMockReminder(claimed.document.id);
+    const business = await readDocument<BusinessDocument>(
+      controlContainer(),
+      claimed.document.tenantId,
+      claimed.document.tenantId,
+    );
+    if (
+      !business ||
+      business.document.type !== "business" ||
+      business.document.id !== claimed.document.tenantId ||
+      business.document.partitionKey !== claimed.document.tenantId ||
+      business.document.status !== "active" ||
+      !business.document.name
+    ) {
+      throw new ReminderDeliveryError(
+        "The reminder Business is unavailable.",
+        "DELIVERY",
+      );
+    }
+    const context: TenantContext = {
+      tenantId: claimed.document.tenantId,
+      businessName: business.document.name,
+      username: "reminder-worker",
+      role: "company_user",
+    };
+    const delivery = await deliverReminder(
+      context,
+      booking.document,
+      claimed.document.id,
+      claimed.document.channel,
+    );
     await replaceReminderDocument(
       {
         ...claimed.document,
         status: "SENT",
         sentAt: now,
         providerReference: delivery.providerReference,
+        provider: delivery.provider,
+        conversationId: delivery.conversationId,
+        messageId: delivery.messageId,
         processingStartedAt: undefined,
         processingLeaseExpiresAt: undefined,
         lastErrorCode: undefined,
@@ -424,7 +465,11 @@ async function processReminder(
         processingStartedAt: undefined,
         processingLeaseExpiresAt: undefined,
         lastErrorCode:
-          error instanceof Error ? error.name : "UnknownError",
+          error instanceof ReminderDeliveryError
+            ? error.code
+            : error instanceof Error
+              ? error.name
+              : "UnknownError",
         updatedAt: now,
       },
       latest.etag,

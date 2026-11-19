@@ -38,7 +38,7 @@ human-readable. Raw secrets, passwords and session tokens are never stored.
 | `bookings` | Tenant-owned Booking records | `/tenantId` | Customer and Service references, UTC times, timezone, snapshots and status |
 | `booking-confirmations` | Tenant-owned Booking confirmation attempts | `/tenantId` | Booking, Customer, Conversation and Message references with delivery outcome |
 | `payments` | Tenant-owned internal Payment records | `/tenantId` | Booking references, minor-unit amounts, provider references and lifecycle status; never card details |
-| `reminders` | Tenant-owned Booking reminder records | `/tenantId` | Booking references, UTC schedules, channel labels, processing leases, attempts and mock delivery results |
+| `reminders` | Tenant-owned Booking reminder records | `/tenantId` | Booking references, UTC schedules, channel labels, processing leases, attempts, Conversation/Message references and delivery results |
 
 The authentication containers use `/partitionKey` because they contain several
 technical record types with different routing needs. Future business domains
@@ -64,7 +64,7 @@ will not copy this pattern automatically.
 | `platform-bootstrap-lock` | Permanently prevents a second first-platform-administrator bootstrap | Selected user ID, setup-token hash and completion state | Platform security | Permanent | No |
 | `payment` | Tracks a provider-safe payment request and its result | Booking ID, type, minor-unit amount, currency, status, provider reference and timestamps | Company tenant | Durable financial history until an approved retention policy exists | Yes |
 | `booking-confirmation` | Controls one confirmation attempt per confirmed Booking | Booking, Customer, Conversation and Message references, channel, status and safe failure category | Company tenant | Durable Booking history until an approved retention policy exists | Through the linked Conversation |
-| `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease and mock provider reference | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
+| `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease, provider and optional Conversation/Message references | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
 
 Conversation Message records may additionally retain a non-secret messaging
 provider name, external message ID, provider event ID, provider-attempt time,

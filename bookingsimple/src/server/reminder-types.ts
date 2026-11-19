@@ -42,7 +42,9 @@ export type ReminderDocument = ItemDefinition & {
   timeZone: string;
   scheduledFor: string;
   status: ReminderStatus;
-  provider: "MOCK_TEST";
+  provider: "MOCK_TEST" | "POSTMARK";
+  conversationId?: string;
+  messageId?: string;
   attemptCount: number;
   nextAttemptAt: string;
   processingStartedAt?: string;
@@ -62,7 +64,7 @@ export type ReminderView = {
   offsetMinutes: number;
   scheduledFor: string;
   status: ReminderStatus;
-  provider: "MOCK_TEST";
+  provider: "MOCK_TEST" | "POSTMARK";
   attemptCount: number;
   sentAt?: string;
   createdAt: string;

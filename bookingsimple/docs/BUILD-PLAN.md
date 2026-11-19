@@ -1197,8 +1197,7 @@ STOP after completion.
 
 # STAGE 14 — First Real Communication Channel
 
-Status: IMPLEMENTED; EXTERNAL END-TO-END VALIDATION REQUIRES A PUBLIC HTTPS
-DEPLOYMENT AND CONTROLLED TEST MAILBOX.
+Status: COMPLETE
 
 ## Objective
 
@@ -1286,7 +1285,7 @@ STOP after completion.
 
 # STAGE 15 — Real Payment Provider
 
-Status: IMPLEMENTED EARLY; STRIPE SANDBOX VALIDATION PENDING
+Status: COMPLETE IN STRIPE TEST MODE; LIVE PAYMENTS ARE NOT ENABLED
 
 ## Objective
 
@@ -1350,6 +1349,8 @@ STOP after completion.
 
 # STAGE 16 — Booking Confirmation Messaging
 
+Status: COMPLETE
+
 ## Objective
 
 Connect confirmed bookings to customer communications.
@@ -1386,6 +1387,8 @@ STOP after completion.
 
 # STAGE 17 — Real Reminder Delivery
 
+Status: IMPLEMENTED; DEPLOYED CRON AND CONTROLLED POSTMARK VALIDATION PENDING
+
 ## Objective
 
 Send actual booking reminders using the messaging architecture.
@@ -1413,6 +1416,22 @@ Record Result
 - duplicate processing is safe
 - delivery result is recorded
 - failures are visible and retryable where appropriate
+
+## Implemented Stage 17 Design
+
+The existing tenant-partitioned Reminder worker now sends Email reminders
+through the configured messaging provider and records the Conversation and
+Message identifiers on the Reminder. Deterministic Message identifiers,
+ETag-protected claims and processing leases make duplicate worker invocations
+safe. The worker re-reads the Booking immediately before delivery and cancels
+the Reminder when the Booking is completed, cancelled, no-show or missing.
+
+A Vercel Cron invokes a server-only Route Handler every minute. Vercel must
+supply the configured `CRON_SECRET` as a bearer token; missing configuration
+fails closed and the secret is never logged. SMS, WhatsApp and Meta rules
+record explicit retryable `UNSUPPORTED_CHANNEL` failures until their provider
+adapters are connected. Provider and routing failures remain visible on the
+Reminder and use the existing bounded retry schedule.
 
 STOP after completion.
 
@@ -1629,7 +1648,7 @@ A partially working feature is not complete merely because the UI renders.
 
 Completed stage:
 
-STAGE 1 — Application Foundation
+STAGE 16 — Booking Confirmation Messaging
 
 Status:
 
@@ -1637,9 +1656,9 @@ COMPLETE.
 
 Current work:
 
-STAGE 2 — Database Foundation, in progress. Registration planning has also
-been requested; implementation still requires the database, authentication,
-and tenant-authorization prerequisites to be designed and verified.
+STAGE 17 — Real Reminder Delivery is implemented. A server-side `CRON_SECRET`,
+Vercel redeployment and controlled real Postmark reminder are still required
+before Stage 17 is marked complete.
 
 ---
 

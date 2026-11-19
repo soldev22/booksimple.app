@@ -247,7 +247,7 @@ Business-domain containers have no default TTL.
 | `channel-identities` | Server-resolved active Business GUID in `/tenantId` | Deterministic provider-neutral contact identities and optional Customer links; durable with no automatic expiry |
 | `bookings` | Server-resolved active Business GUID in `/tenantId` | Durable Booking references, UTC instants, timezone and Service snapshots; no automatic expiry |
 | `payments` | Server-resolved active Business GUID in `/tenantId` | Durable provider-safe Payment records and mock references; no card details or automatic expiry |
-| `reminders` | Server-resolved active Business GUID in `/tenantId` | Durable Booking reminder schedules, processing attempts and mock delivery results; no automatic expiry |
+| `reminders` | Server-resolved active Business GUID in `/tenantId` | Durable Booking reminder schedules, processing attempts, Conversation/Message references and delivery results; no automatic expiry |
 
 The plain-language record inventory, sensitivity classifications and retention
 matrix are maintained in `docs/DATA-DICTIONARY.md`. Retention durations are
@@ -1241,14 +1241,21 @@ retaining its IANA timezone for display. Changing a Booking time reschedules
 unsent records from their snapshotted offsets. Completed, cancelled and no-show
 Bookings cancel unsent reminders; sent records remain history.
 
-`npm run process:reminders` is a server-side worker entry point suitable for an
-external scheduler. It queries due records across tenant partitions under the
+`npm run process:reminders` remains a server-side worker entry point for
+controlled operations. The deployed application also exposes a server-only
+Route Handler invoked every minute by Vercel Cron. The handler requires
+Vercel's `CRON_SECRET` bearer token and fails closed when it is missing or
+invalid.
+
+The worker queries due records across tenant partitions under the
 application's service identity, then point-reads and ETag-claims each record
 with a five-minute processing lease. Before delivery it rechecks the owning
-Booking and current schedule. The Stage 12 `MOCK_TEST` provider records a
-deterministic mock reference but sends no customer message. Retry delays use
+Booking and current schedule. Email reminders use the configured messaging
+provider, create or reuse the Customer's tenant-owned Email Conversation and
+retain deterministic Message references on the Reminder. Retry delays use
 bounded exponential backoff, stale leases are recoverable, and a sent record
-is never selected again.
+is never selected again. Rules for SMS, WhatsApp or Meta record an explicit
+retryable `UNSUPPORTED_CHANNEL` failure until those adapters are connected.
 
 ---
 
@@ -1266,7 +1273,9 @@ Examples:
 
 Initial development may use a simple implementation.
 
-Production architecture must use a reliable background mechanism appropriate to the Azure deployment environment.
+The current Vercel deployment uses an authenticated Vercel Cron Route Handler
+for Reminder processing. A future Azure deployment must select an equivalent
+reliable background mechanism rather than depending on the Vercel scheduler.
 
 Avoid adding complex queue infrastructure until workload requirements justify it.
 
