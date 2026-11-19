@@ -100,6 +100,7 @@ export async function deliverReminder(
   const provider = configuredMessagingProvider();
   if (
     provider.provider === "TWILIO" ||
+    provider.provider === "META" ||
     !provider.supportedChannels.includes("EMAIL")
   ) {
     throw new ReminderDeliveryError(

@@ -1,6 +1,10 @@
 import type { CommunicationChannel } from "./conversation-types";
 
-export type MessagingProviderName = "MOCK_TEST" | "POSTMARK" | "TWILIO";
+export type MessagingProviderName =
+  | "MOCK_TEST"
+  | "POSTMARK"
+  | "TWILIO"
+  | "META";
 export type ProviderMessageStatus = "ACCEPTED";
 export type MessagingProviderErrorCategory =
   | "AUTHENTICATION"

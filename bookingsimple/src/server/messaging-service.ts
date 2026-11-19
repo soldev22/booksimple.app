@@ -11,6 +11,7 @@ import {
   type ProviderWebhookRequest,
 } from "./messaging-provider";
 import { mockMessagingProvider } from "./mock-messaging-provider";
+import { metaMessengerMessagingProvider } from "./meta-messenger-messaging-provider";
 import { postmarkMessagingProvider } from "./postmark-messaging-provider";
 import { twilioSmsMessagingProvider } from "./twilio-sms-messaging-provider";
 import { twilioWhatsAppMessagingProvider } from "./twilio-whatsapp-messaging-provider";
@@ -31,7 +32,7 @@ const outboundMessageSchema = z
 
 const messageReceiptSchema = z
   .object({
-    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO"]),
+    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO", "META"]),
     externalMessageId: z.string().trim().min(1).max(200),
     status: z.literal("ACCEPTED"),
     acceptedAt: z.iso.datetime({ offset: true }),
@@ -40,7 +41,7 @@ const messageReceiptSchema = z
 
 const normalizedIncomingSchema = z
   .object({
-    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO"]),
+    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO", "META"]),
     tenantId: z.uuid().optional(),
     providerEventId: z.string().trim().min(1).max(200),
     externalMessageId: z.string().trim().min(1).max(200),
@@ -68,6 +69,7 @@ export function messagingProviderForChannel(
   if (configured.simulated) return configured;
   if (channel === "SMS") return twilioSmsMessagingProvider;
   if (channel === "WHATSAPP") return twilioWhatsAppMessagingProvider;
+  if (channel === "FACEBOOK") return metaMessengerMessagingProvider;
   return configured;
 }
 
@@ -98,7 +100,6 @@ export async function parseProviderWebhook(
   await provider.validateWebhook(request);
   return z
     .array(normalizedIncomingSchema)
-    .min(1)
     .max(100)
     .parse(await provider.parseIncomingMessage(request));
 }

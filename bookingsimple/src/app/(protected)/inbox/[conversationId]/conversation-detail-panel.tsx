@@ -100,7 +100,8 @@ export function ConversationDetailPanel({
   const canSendExternally =
     conversation.channel === "EMAIL" ||
     conversation.channel === "SMS" ||
-    conversation.channel === "WHATSAPP";
+    conversation.channel === "WHATSAPP" ||
+    conversation.channel === "FACEBOOK";
 
   async function refreshDetails() {
     const value = await conversationApi(
@@ -140,7 +141,11 @@ export function ConversationDetailPanel({
         result.message.deliveryStatus === "SENT"
           ? conversation.channel === "SMS"
             ? "SMS accepted by Twilio for delivery."
-            : "Email accepted by Postmark for delivery."
+            : conversation.channel === "WHATSAPP"
+              ? "WhatsApp message accepted by Twilio for delivery."
+              : conversation.channel === "FACEBOOK"
+                ? "Facebook reply accepted by Meta for delivery."
+                : "Email accepted by Postmark for delivery."
           : "Reply saved locally. It was not sent to an external channel.",
       );
     } catch (failure) {
@@ -359,6 +364,8 @@ export function ConversationDetailPanel({
                   ? "Replies use Twilio SMS. Provider failures remain visible in this Conversation."
                   : conversation.channel === "WHATSAPP"
                     ? "Replies use Twilio WhatsApp within the active customer-service window. Provider failures remain visible in this Conversation."
+                    : conversation.channel === "FACEBOOK"
+                      ? "Replies use Meta Messenger within the active standard messaging window. Provider failures remain visible in this Conversation."
                   : "This channel cannot be sent externally until its provider is connected."}
             </p>
             <button
@@ -372,6 +379,8 @@ export function ConversationDetailPanel({
                   ? "Send SMS"
                   : conversation.channel === "WHATSAPP"
                     ? "Send WhatsApp"
+                  : conversation.channel === "FACEBOOK"
+                    ? "Send Facebook reply"
                   : "Send Email"}
             </button>
           </form>

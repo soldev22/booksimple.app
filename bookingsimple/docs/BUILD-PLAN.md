@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: IN PROGRESS — TWILIO SMS COMPLETE; WHATSAPP OUTBOUND LIVE VERIFIED, INBOUND PENDING
+Status: IN PROGRESS — TWILIO SMS AND WHATSAPP COMPLETE; FACEBOOK IMPLEMENTED, LIVE VALIDATION PENDING
 
 ## Objective
 
@@ -1563,11 +1563,7 @@ Implemented:
 
 Scope is limited to free-form Inbox messaging inside WhatsApp's 24-hour
 customer-service window. Templates, marketing messages, media, delivery-status
-callbacks, WhatsApp reminders and Facebook / Meta remain deferred.
-
-Live validation remains required with a joined Twilio Sandbox device or an
-approved production WhatsApp sender. Stop after proving signed inbound,
-same-tenant persistence, an outbound reply and duplicate webhook idempotency.
+callbacks and WhatsApp reminders remain deferred.
 
 Production deployment `dpl_82p2T1QNdPtbSBBmGNzhJX3sPwNH` completed as Ready
 and was assigned to `https://www.booksimple.app`. The tenant-to-Sandbox sender
@@ -1582,9 +1578,54 @@ delivery proof initially remained pending.
 The test device subsequently joined the Sandbox successfully. Production
 Cosmos evidence confirms two provider-backed WhatsApp sends were accepted by
 Twilio and persisted as `OUTBOUND` / `SENT` with real Twilio Message SIDs. No
-provider-backed `INBOUND` / `RECEIVED` WhatsApp Message has yet been persisted,
-so signed inbound delivery remains the final acceptance gate before beginning
-the separate Facebook / Meta increment.
+provider-backed `INBOUND` / `RECEIVED` WhatsApp Message had initially been
+persisted.
+
+Live two-way validation is now complete. A subsequent customer message from
+the joined device passed the signed production webhook, resolved the Iris Art
+tenant and existing WhatsApp Conversation, and persisted as `INBOUND` /
+`RECEIVED` with provider `TWILIO` and matching external/provider Message SIDs.
+The earlier outbound replies remain persisted in the same tenant Conversation
+as `OUTBOUND` / `SENT` with real Twilio Message SIDs. The Twilio WhatsApp
+increment is complete.
+
+## Facebook Messenger Increment
+
+The next Stage 18 increment adds direct Meta Messenger text messaging while
+preserving the provider-neutral Conversation and Message model.
+
+Implemented:
+
+- `META` is a first-class provider for the existing `FACEBOOK` channel,
+- bounded server-side tenant routes reject duplicate tenants and duplicate
+  Facebook Page IDs while retaining Page tokens, App Secrets and verify tokens
+  only in server configuration,
+- outbound Inbox replies call the pinned Meta Graph API Page messages endpoint
+  with `messaging_type=RESPONSE` and retain the Meta message ID,
+- webhook GET verification requires a configured verify token,
+- webhook POST authentication computes HMAC-SHA256 over the exact raw UTF-8
+  body and validates `X-Hub-Signature-256` before normalization,
+- the authenticated Page ID selects exactly one tenant before a Page-scoped
+  sender identity is resolved within that tenant partition,
+- text messages are normalized and idempotent by Meta message ID while echoes
+  and unsupported non-text events are acknowledged without persistence,
+- Facebook Conversations can reply externally but cannot be manually initiated
+  from the Inbox, matching Meta's person-initiated conversation requirement,
+- focused tests cover sends, safe failures, signatures, Page routing, challenge
+  verification, echo filtering and ambiguous configuration, and an opt-in
+  Cosmos integration test covers persistence, idempotency and tenant isolation.
+
+Scope is limited to Page text messages and free-form replies in Meta's standard
+messaging window, normally 24 hours. Attachments, reactions, postbacks, handover,
+templates, tags, marketing, Instagram, reminders and delivery-status events are
+deferred. Standard Access supports app-role/test users only; ordinary customers
+require the appropriate Advanced Access and App Review approval.
+
+Live validation remains required. Deploy the fail-closed endpoint before adding
+the callback URL, then connect one approved Facebook Page, subscribe it to
+`messages`, prove a signed inbound Page message and an outbound reply in the
+same tenant Conversation, and confirm duplicate delivery remains idempotent.
+Stop after that proof.
 
 ---
 

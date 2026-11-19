@@ -10,6 +10,10 @@ import {
   postmarkInboundReplyAddress,
   postmarkMessagingProvider,
 } from "../src/server/postmark-messaging-provider.ts";
+import {
+  metaMessengerMessagingProvider,
+  verifyMetaWebhookChallenge,
+} from "../src/server/meta-messenger-messaging-provider.ts";
 import { twilioSmsMessagingProvider } from "../src/server/twilio-sms-messaging-provider.ts";
 import { twilioWhatsAppMessagingProvider } from "../src/server/twilio-whatsapp-messaging-provider.ts";
 
@@ -19,6 +23,32 @@ const messageId = "33333333-3333-4333-8333-333333333333";
 const twilioAccountSid = `AC${"1".repeat(32)}`;
 const twilioAuthToken = "test-twilio-auth-token";
 const twilioFromNumber = "+447700900999";
+const metaPageId = "123456789012345";
+const metaPsid = "987654321098765";
+const metaAppSecret = "test-meta-app-secret-123456";
+const metaVerifyToken = "test-meta-verify-token-123456";
+
+function configureMetaRoutes(routes) {
+  process.env.META_MESSENGER_ROUTES = JSON.stringify(routes);
+}
+
+function metaRoute(overrides = {}) {
+  return {
+    tenantId,
+    pageId: metaPageId,
+    pageAccessToken: "test-page-access-token-123456",
+    appSecret: metaAppSecret,
+    verifyToken: metaVerifyToken,
+    graphApiVersion: "v27.0",
+    ...overrides,
+  };
+}
+
+function metaSignature(rawBody, appSecret = metaAppSecret) {
+  return `sha256=${createHmac("sha256", appSecret)
+    .update(rawBody)
+    .digest("hex")}`;
+}
 
 function configureTwilioRoutes(routes) {
   process.env.TWILIO_SMS_ROUTES = JSON.stringify(routes);
@@ -603,4 +633,220 @@ test("Twilio WhatsApp sender configuration rejects ambiguity", async () => {
       }),
     (error) => error?.category === "CONFIGURATION",
   );
+});
+
+test("Meta provider sends tenant-routed Facebook replies", async () => {
+  configureMetaRoutes([metaRoute()]);
+  const previousFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (input, init) => {
+    request = { input, init };
+    return Response.json({
+      recipient_id: metaPsid,
+      message_id: "m_meta_outbound_123",
+    });
+  };
+  try {
+    const receipt = await sendProviderMessage(metaMessengerMessagingProvider, {
+      tenantId,
+      conversationId,
+      messageId,
+      channel: "FACEBOOK",
+      recipientAddress: metaPsid,
+      subject: "Ignored",
+      body: "Thanks for your message.",
+      requestedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.equal(
+      request.input,
+      `https://graph.facebook.com/v27.0/${metaPageId}/messages`,
+    );
+    assert.equal(
+      request.init.headers.Authorization,
+      "Bearer test-page-access-token-123456",
+    );
+    assert.deepEqual(JSON.parse(request.init.body), {
+      recipient: { id: metaPsid },
+      messaging_type: "RESPONSE",
+      message: { text: "Thanks for your message." },
+    });
+    assert.equal(receipt.provider, "META");
+    assert.equal(receipt.externalMessageId, "m_meta_outbound_123");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Meta provider verifies and tenant-routes inbound Facebook text", async () => {
+  configureMetaRoutes([metaRoute()]);
+  const rawBody = JSON.stringify({
+    object: "page",
+    entry: [
+      {
+        id: metaPageId,
+        messaging: [
+          {
+            sender: { id: metaPsid },
+            recipient: { id: metaPageId },
+            timestamp: 1767225600000,
+            message: {
+              mid: "m_meta_inbound_123",
+              text: "Can I move my booking?",
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const messages = await parseProviderWebhook(metaMessengerMessagingProvider, {
+    rawBody,
+    headers: { "x-hub-signature-256": metaSignature(rawBody) },
+  });
+  assert.deepEqual(messages, [
+    {
+      provider: "META",
+      tenantId,
+      providerEventId: "m_meta_inbound_123",
+      externalMessageId: "m_meta_inbound_123",
+      channel: "FACEBOOK",
+      senderAddress: metaPsid,
+      recipientAddress: metaPageId,
+      providerRouteKey: metaPageId,
+      body: "Can I move my booking?",
+      receivedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  await assert.rejects(
+    () =>
+      parseProviderWebhook(metaMessengerMessagingProvider, {
+        rawBody,
+        headers: { "x-hub-signature-256": "sha256=invalid" },
+      }),
+    (error) => error?.category === "AUTHENTICATION",
+  );
+});
+
+test("Meta provider safely ignores echoes and unsupported events", async () => {
+  configureMetaRoutes([metaRoute()]);
+  const rawBody = JSON.stringify({
+    object: "page",
+    entry: [
+      {
+        id: metaPageId,
+        messaging: [
+          {
+            sender: { id: metaPageId },
+            recipient: { id: metaPageId },
+            timestamp: 1767225600000,
+            message: {
+              mid: "m_meta_echo_123",
+              text: "Outbound echo",
+              is_echo: true,
+            },
+          },
+          {
+            sender: { id: metaPsid },
+            recipient: { id: metaPageId },
+            timestamp: 1767225600000,
+            delivery: {
+              mids: ["m_meta_delivery_123"],
+              watermark: 1767225600000,
+            },
+          },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(
+    await parseProviderWebhook(metaMessengerMessagingProvider, {
+      rawBody,
+      headers: { "x-hub-signature-256": metaSignature(rawBody) },
+    }),
+    [],
+  );
+});
+
+test("Meta provider rejects unknown Pages and ambiguous configuration", async () => {
+  configureMetaRoutes([metaRoute()]);
+  const rawBody = JSON.stringify({
+    object: "page",
+    entry: [{ id: "555555555555555", messaging: [] }],
+  });
+  await assert.rejects(
+    () =>
+      parseProviderWebhook(metaMessengerMessagingProvider, {
+        rawBody,
+        headers: { "x-hub-signature-256": metaSignature(rawBody) },
+      }),
+    (error) => error?.category === "AUTHENTICATION",
+  );
+  configureMetaRoutes([
+    metaRoute(),
+    metaRoute({ tenantId: "44444444-4444-4444-8444-444444444444" }),
+  ]);
+  await assert.rejects(
+    () =>
+      sendProviderMessage(metaMessengerMessagingProvider, {
+        tenantId,
+        conversationId,
+        messageId,
+        channel: "FACEBOOK",
+        recipientAddress: metaPsid,
+        subject: "Ignored",
+        body: "Hello",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    (error) => error?.category === "CONFIGURATION",
+  );
+});
+
+test("Meta webhook challenge requires the configured verify token", () => {
+  configureMetaRoutes([metaRoute()]);
+  const valid = new URLSearchParams({
+    "hub.mode": "subscribe",
+    "hub.verify_token": metaVerifyToken,
+    "hub.challenge": "123456789",
+  });
+  assert.equal(verifyMetaWebhookChallenge(valid), "123456789");
+  valid.set("hub.verify_token", "wrong-token-123456");
+  assert.throws(
+    () => verifyMetaWebhookChallenge(valid),
+    (error) => error?.category === "AUTHENTICATION",
+  );
+});
+
+test("Meta provider returns safe provider failures", async () => {
+  configureMetaRoutes([metaRoute()]);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        error: {
+          message: "Sensitive provider detail",
+          code: 10,
+        },
+      },
+      { status: 400 },
+    );
+  try {
+    await assert.rejects(
+      () =>
+        sendProviderMessage(metaMessengerMessagingProvider, {
+          tenantId,
+          conversationId,
+          messageId,
+          channel: "FACEBOOK",
+          recipientAddress: metaPsid,
+          subject: "Ignored",
+          body: "Hello",
+          requestedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      (error) =>
+        error?.message === "Meta did not accept the message." &&
+        error?.providerCode === 10 &&
+        !error.message.includes("Sensitive"),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });

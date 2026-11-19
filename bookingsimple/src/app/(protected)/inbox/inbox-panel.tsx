@@ -16,6 +16,7 @@ import {
 function contactPlaceholder(channel: CommunicationChannel): string {
   if (channel === "EMAIL") return "customer@example.com";
   if (channel === "SMS" || channel === "WHATSAPP") return "+44 7700 900123";
+  if (channel === "FACEBOOK") return "Facebook conversations start from Page messages";
   return "Provider-neutral contact ID";
 }
 
@@ -129,8 +130,9 @@ export function InboxPanel() {
       <section className="account-section">
         <h2>Start a Conversation</h2>
         <p>
-          Outgoing Email, SMS and WhatsApp messages use connected providers.
-          WhatsApp free-form replies require an active customer-service window.
+          Outgoing Email, SMS, WhatsApp and Facebook replies use connected
+          providers. WhatsApp and Facebook free-form replies require an active
+          messaging window.
         </p>
         <form className="conversation-create-form" onSubmit={createConversation}>
           <label className="account-field">
@@ -144,7 +146,9 @@ export function InboxPanel() {
               value={channel}
             >
               <option value="WHATSAPP">WhatsApp</option>
-              <option value="FACEBOOK">Facebook / Meta</option>
+              <option disabled value="FACEBOOK">
+                Facebook / Meta (starts from a Page message)
+              </option>
               <option value="SMS">SMS</option>
               <option value="EMAIL">Email</option>
             </select>

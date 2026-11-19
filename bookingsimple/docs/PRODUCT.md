@@ -256,8 +256,11 @@ real channel. Business replies can be sent by Email and customer Email replies
 return to the same Conversation through an opaque reply route. Stage 18 adds
 tenant-routed Twilio SMS and WhatsApp for incoming and outgoing Inbox messages.
 WhatsApp free-form replies are limited to the active 24-hour customer-service
-window. Failed sends remain visible. WhatsApp templates, marketing messages,
-media and Facebook / Meta remain unconnected.
+window. Stage 18 also connects Facebook Messenger text messages through Meta:
+customer Page messages create or update tenant-scoped Conversations, and
+business users can reply during Meta's standard messaging window. Failed sends
+remain visible. WhatsApp templates, marketing messages, media, Facebook
+attachments, postbacks, tags, marketing and Instagram remain unconnected.
 
 ---
 

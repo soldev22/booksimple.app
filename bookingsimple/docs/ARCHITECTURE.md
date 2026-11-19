@@ -904,10 +904,11 @@ browser retry from sending twice. Message state moves from `PENDING` to `SENT`
 when Postmark accepts the request or to `FAILED` with a safe failure category;
 Postmark acceptance is not represented as final delivery.
 
-Stage 18 adds Twilio SMS and WhatsApp adapters while retaining Postmark for Email.
+Stage 18 adds Twilio SMS and WhatsApp adapters and a direct Meta Messenger
+adapter while retaining Postmark for Email.
 Outgoing provider selection is channel-aware: local `MOCK_TEST` still handles
 all channels, Postmark handles real Email, and Twilio handles real SMS and
-WhatsApp. Twilio
+WhatsApp. Meta handles real Facebook Messenger text replies. Twilio
 routes are a bounded server-side configuration keyed by tenant. Configuration
 rejects duplicate tenants and duplicate Account SID plus destination-number
 routes.
@@ -929,9 +930,27 @@ matching `AccountSid`, followed by signature verification and tenant-local
 sender identity resolution. Outbound free-form messages are intended only for
 the 24-hour customer-service window after an inbound customer message.
 
-`MOCK_TEST` remains available for local-only development. Facebook / Meta,
-WhatsApp templates and marketing messages, media attachments, reminders and
-Postmark/Twilio delivery status webhooks are outside this increment.
+Meta Messenger routes are a bounded server-side configuration keyed by tenant
+and Facebook Page ID. Page access tokens, App Secrets and webhook verify tokens
+remain server-side. Configuration rejects duplicate tenants and duplicate Page
+IDs. The callback GET challenge requires a configured verify token. For POST
+events, the adapter uses the unmodified raw request body for
+`X-Hub-Signature-256` HMAC-SHA256 verification before returning any normalized
+message. The authenticated `entry.id` Page selects exactly one tenant; only
+then is the Page-scoped sender ID resolved within that tenant. Meta message IDs
+provide inbound idempotency. Outbound replies use a bearer Page access token,
+the pinned Graph API version and `messaging_type=RESPONSE`.
+
+The Facebook increment accepts text messages only, ignores message echoes and
+unsupported events, and assumes the person initiated the Page conversation.
+Ordinary replies are intended only for Meta's standard messaging window,
+normally 24 hours. Standard Access is limited to app-role/test users; ordinary
+customers require the relevant Advanced Access and App Review approval.
+
+`MOCK_TEST` remains available for local-only development. WhatsApp templates
+and marketing messages, media attachments, Facebook attachments, postbacks,
+tags, marketing and Instagram, reminders, and provider delivery-status
+webhooks are outside this increment.
 
 ---
 

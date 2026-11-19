@@ -25,6 +25,7 @@ function validContact(channel: CommunicationChannel, value: string): boolean {
   if (channel === "SMS" || channel === "WHATSAPP") {
     return /^\+\d{7,15}$/.test(value);
   }
+  if (channel === "FACEBOOK") return /^\d{5,40}$/.test(value);
   return value.length >= 1 && value.length <= 254;
 }
 
@@ -52,6 +53,14 @@ const createConversationSchema = z
         code: "custom",
         path: ["contactValue"],
         message: "Contact value is invalid for the selected channel.",
+      });
+      return z.NEVER;
+    }
+    if (value.channel === "FACEBOOK" && value.direction === "OUTBOUND") {
+      context.addIssue({
+        code: "custom",
+        path: ["direction"],
+        message: "Facebook Conversations must begin with a customer message.",
       });
       return z.NEVER;
     }

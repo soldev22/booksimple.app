@@ -373,7 +373,7 @@ completed, cancelled or no-show Bookings. Email delivery is linked to the
 Customer Conversation and Message. SMS, WhatsApp and Meta rules remain
 retryable failures until those provider adapters are connected.
 
-### Email, SMS and WhatsApp messaging
+### Email, SMS, WhatsApp and Facebook messaging
 
 Stage 13 defines the provider-neutral server boundary for outbound sends,
 webhook authenticity checks and inbound-message normalization. Provider
@@ -436,8 +436,37 @@ marketing messages, media and WhatsApp reminders are outside this increment.
 Twilio Sandbox testing also requires each test device to join the Sandbox and
 is not a production sender.
 
-`MOCK_TEST` remains available for local-only development. Facebook / Meta is
-not connected.
+Facebook Messenger uses a direct Meta Graph API adapter. Set
+`META_MESSENGER_ROUTES` to the bounded tenant-to-Page route list documented in
+`.env.example`. Each route contains one tenant ID, Page ID, server-side Page
+access token, App Secret, webhook verify token and pinned Graph API version.
+Duplicate tenants or Page IDs fail closed.
+
+In the Meta App dashboard, add Messenger, connect the intended Facebook Page,
+and configure this callback URL:
+
+```text
+https://www.booksimple.app/api/webhooks/meta/messenger
+```
+
+Use the route's webhook verify token and subscribe the Page to `messages`. Meta
+verifies the endpoint with a GET challenge. POST requests are accepted only
+after the exact raw UTF-8 body passes `X-Hub-Signature-256` HMAC-SHA256
+verification with the App Secret. The authenticated Page ID then selects one
+tenant before the Page-scoped sender ID is resolved in that tenant partition.
+Page access tokens and App Secrets must remain server-side and must never be
+logged or committed.
+
+Outgoing replies call the pinned Graph API
+`/{PAGE_ID}/messages` endpoint with `messaging_type=RESPONSE`. A person must
+message the Page first, and ordinary free-form replies are limited to Meta's
+standard messaging window, normally 24 hours. Standard Access reaches only
+app-role/test users; messages for ordinary customers require the appropriate
+Advanced Access and App Review approval. This increment handles text messages
+only. Attachments, reactions, postbacks, echoes, templates, tags, marketing,
+Instagram and Facebook reminders remain outside scope.
+
+`MOCK_TEST` remains available for local-only development.
 
 ### Booking confirmations
 

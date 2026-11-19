@@ -28,6 +28,22 @@ test("Conversation input normalizes channel addresses", () => {
   );
   assert.deepEqual(
     parseCreateConversationInput({
+      channel: "FACEBOOK",
+      contactValue: "987654321098765",
+      contactLabel: "Facebook contact",
+      initialMessage: "Hello from the Page",
+      direction: "INBOUND",
+    }),
+    {
+      channel: "FACEBOOK",
+      normalizedContact: "987654321098765",
+      contactLabel: "Facebook contact",
+      initialMessage: "Hello from the Page",
+      direction: "INBOUND",
+    },
+  );
+  assert.deepEqual(
+    parseCreateConversationInput({
       channel: "WHATSAPP",
       contactValue: "+44 (7700) 900123",
       contactLabel: "",
@@ -79,6 +95,21 @@ test("Conversation input is strict and validates channel-specific addresses", ()
       ...base,
       channel: "WHATSAPP",
       contactValue: "07700900123",
+    }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
+      channel: "FACEBOOK",
+      contactValue: "not-a-psid",
+    }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
+      channel: "FACEBOOK",
+      contactValue: "987654321098765",
+      direction: "OUTBOUND",
     }),
   );
   assert.throws(() =>
