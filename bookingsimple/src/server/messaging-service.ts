@@ -13,6 +13,7 @@ import {
 import { mockMessagingProvider } from "./mock-messaging-provider";
 import { postmarkMessagingProvider } from "./postmark-messaging-provider";
 import { twilioSmsMessagingProvider } from "./twilio-sms-messaging-provider";
+import { twilioWhatsAppMessagingProvider } from "./twilio-whatsapp-messaging-provider";
 
 const outboundMessageSchema = z
   .object({
@@ -66,6 +67,7 @@ export function messagingProviderForChannel(
   const configured = configuredMessagingProvider();
   if (configured.simulated) return configured;
   if (channel === "SMS") return twilioSmsMessagingProvider;
+  if (channel === "WHATSAPP") return twilioWhatsAppMessagingProvider;
   return configured;
 }
 

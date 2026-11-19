@@ -98,7 +98,9 @@ export function ConversationDetailPanel({
   const [message, setMessage] = useState("");
   const { conversation, resolution } = details;
   const canSendExternally =
-    conversation.channel === "EMAIL" || conversation.channel === "SMS";
+    conversation.channel === "EMAIL" ||
+    conversation.channel === "SMS" ||
+    conversation.channel === "WHATSAPP";
 
   async function refreshDetails() {
     const value = await conversationApi(
@@ -355,6 +357,8 @@ export function ConversationDetailPanel({
                 ? "Replies use Postmark Email. Provider failures remain visible in this Conversation."
                 : conversation.channel === "SMS"
                   ? "Replies use Twilio SMS. Provider failures remain visible in this Conversation."
+                  : conversation.channel === "WHATSAPP"
+                    ? "Replies use Twilio WhatsApp within the active customer-service window. Provider failures remain visible in this Conversation."
                   : "This channel cannot be sent externally until its provider is connected."}
             </p>
             <button
@@ -366,6 +370,8 @@ export function ConversationDetailPanel({
                 ? "Sending..."
                 : conversation.channel === "SMS"
                   ? "Send SMS"
+                  : conversation.channel === "WHATSAPP"
+                    ? "Send WhatsApp"
                   : "Send Email"}
             </button>
           </form>

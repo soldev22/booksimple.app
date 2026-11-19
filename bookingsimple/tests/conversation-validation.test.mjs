@@ -77,6 +77,13 @@ test("Conversation input is strict and validates channel-specific addresses", ()
   assert.throws(() =>
     parseCreateConversationInput({
       ...base,
+      channel: "WHATSAPP",
+      contactValue: "07700900123",
+    }),
+  );
+  assert.throws(() =>
+    parseCreateConversationInput({
+      ...base,
       initialMessage: "x".repeat(4_001),
     }),
   );

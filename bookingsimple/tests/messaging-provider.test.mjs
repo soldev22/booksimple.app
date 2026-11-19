@@ -11,6 +11,7 @@ import {
   postmarkMessagingProvider,
 } from "../src/server/postmark-messaging-provider.ts";
 import { twilioSmsMessagingProvider } from "../src/server/twilio-sms-messaging-provider.ts";
+import { twilioWhatsAppMessagingProvider } from "../src/server/twilio-whatsapp-messaging-provider.ts";
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
@@ -22,6 +23,10 @@ const twilioFromNumber = "+447700900999";
 function configureTwilioRoutes(routes) {
   process.env.TWILIO_SMS_ROUTES = JSON.stringify(routes);
   process.env.APP_ORIGIN = "https://booksimple.app";
+}
+
+function configureTwilioWhatsAppSenders(senders) {
+  process.env.TWILIO_WHATSAPP_SENDERS = JSON.stringify(senders);
 }
 
 function twilioSignature(url, rawBody) {
@@ -452,6 +457,145 @@ test("Twilio route configuration rejects tenant and destination ambiguity", asyn
         conversationId,
         messageId,
         channel: "SMS",
+        recipientAddress: "+447700900123",
+        subject: "Ignored",
+        body: "Hello",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    (error) => error?.category === "CONFIGURATION",
+  );
+});
+
+test("Twilio provider maps tenant-routed WhatsApp sends", async () => {
+  const previousFetch = globalThis.fetch;
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  configureTwilioWhatsAppSenders([
+    { tenantId, fromNumber: "+14155238886" },
+  ]);
+  let request;
+  globalThis.fetch = async (input, init) => {
+    request = { input, init };
+    return Response.json({
+      sid: `SM${"5".repeat(32)}`,
+      status: "queued",
+    });
+  };
+  try {
+    const receipt = await sendProviderMessage(
+      twilioWhatsAppMessagingProvider,
+      {
+        tenantId,
+        conversationId,
+        messageId,
+        channel: "WHATSAPP",
+        recipientAddress: "+447700900123",
+        subject: "Ignored for WhatsApp",
+        body: "Thanks for your message.",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+      },
+    );
+    assert.equal(
+      request.input,
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+    );
+    assert.deepEqual(
+      Object.fromEntries(new URLSearchParams(request.init.body)),
+      {
+        Body: "Thanks for your message.",
+        From: "whatsapp:+14155238886",
+        To: "whatsapp:+447700900123",
+      },
+    );
+    assert.equal(receipt.provider, "TWILIO");
+    assert.equal(receipt.externalMessageId, `SM${"5".repeat(32)}`);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Twilio provider authenticates and tenant-routes inbound WhatsApp", async () => {
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  configureTwilioWhatsAppSenders([
+    { tenantId, fromNumber: "+14155238886" },
+  ]);
+  const rawBody = new URLSearchParams({
+    AccountSid: twilioAccountSid,
+    Body: "Can I change my booking?",
+    From: "whatsapp:+447700900123",
+    MessageSid: `SM${"6".repeat(32)}`,
+    To: "whatsapp:+14155238886",
+  }).toString();
+  const url = "https://booksimple.app/api/webhooks/twilio/whatsapp";
+  const signature = twilioSignature(url, rawBody);
+  const messages = await parseProviderWebhook(
+    twilioWhatsAppMessagingProvider,
+    {
+      rawBody,
+      headers: { "x-twilio-signature": signature },
+      url,
+    },
+  );
+  assert.deepEqual(
+    {
+      ...messages[0],
+      receivedAt: undefined,
+    },
+    {
+      provider: "TWILIO",
+      tenantId,
+      providerEventId: `SM${"6".repeat(32)}`,
+      externalMessageId: `SM${"6".repeat(32)}`,
+      channel: "WHATSAPP",
+      senderAddress: "+447700900123",
+      recipientAddress: "+14155238886",
+      providerRouteKey: "+14155238886",
+      body: "Can I change my booking?",
+      receivedAt: undefined,
+    },
+  );
+  await assert.rejects(() =>
+    parseProviderWebhook(twilioWhatsAppMessagingProvider, {
+      rawBody,
+      headers: { "x-twilio-signature": "invalid" },
+      url,
+    }),
+  );
+});
+
+test("Twilio WhatsApp sender configuration rejects ambiguity", async () => {
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  configureTwilioWhatsAppSenders([
+    { tenantId, fromNumber: "+14155238886" },
+    { tenantId, fromNumber: "+14155238887" },
+  ]);
+  await assert.rejects(
+    () =>
+      sendProviderMessage(twilioWhatsAppMessagingProvider, {
+        tenantId,
+        conversationId,
+        messageId,
+        channel: "WHATSAPP",
         recipientAddress: "+447700900123",
         subject: "Ignored",
         body: "Hello",

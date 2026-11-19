@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: COMPLETE — TWILIO SMS LIVE TWO-WAY VERIFIED
+Status: IN PROGRESS — TWILIO SMS COMPLETE; WHATSAPP IMPLEMENTED, LIVE VALIDATION PENDING
 
 ## Objective
 
@@ -1537,8 +1537,37 @@ Live carrier validation is complete:
 - the earlier invalid-number attempts remain visible as `FAILED` without
   creating false Twilio delivery evidence.
 
-The Twilio SMS increment is complete. Stop before adding WhatsApp or
-Facebook / Meta as a separate future channel increment.
+The Twilio SMS increment is complete.
+
+## WhatsApp Increment
+
+The next Stage 18 increment adds tenant-routed Twilio WhatsApp while preserving
+the provider-neutral Conversation and Message model.
+
+Implemented:
+
+- real `WHATSAPP` sends route to a dedicated Twilio adapter and retain the
+  Twilio Message SID,
+- tenant WhatsApp sender mappings are bounded and reuse credentials from the
+  existing tenant-scoped Twilio account route,
+- Twilio's `whatsapp:` prefix is isolated to the adapter boundary while the
+  internal identity remains a canonical E.164 phone address,
+- the size-bounded public webhook resolves exactly one destination sender,
+  checks `AccountSid`, validates `X-Twilio-Signature` and only then returns a
+  normalized tenant-scoped message,
+- Inbox creation and replies require E.164 addresses and expose provider
+  failures rather than representing them as successful sends,
+- focused tests cover sending, signed inbound normalization, invalid
+  signatures and ambiguous configuration, and an opt-in Cosmos integration
+  test covers persistence, idempotency and tenant isolation.
+
+Scope is limited to free-form Inbox messaging inside WhatsApp's 24-hour
+customer-service window. Templates, marketing messages, media, delivery-status
+callbacks, WhatsApp reminders and Facebook / Meta remain deferred.
+
+Live validation remains required with a joined Twilio Sandbox device or an
+approved production WhatsApp sender. Stop after proving signed inbound,
+same-tenant persistence, an outbound reply and duplicate webhook idempotency.
 
 ---
 

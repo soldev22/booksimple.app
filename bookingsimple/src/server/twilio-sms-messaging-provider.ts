@@ -22,7 +22,7 @@ const twilioRouteSchema = z
   })
   .strict();
 
-type TwilioSmsRoute = z.infer<typeof twilioRouteSchema>;
+export type TwilioSmsRoute = z.infer<typeof twilioRouteSchema>;
 
 const twilioSendResponseSchema = z.object({
   sid: twilioMessageSidSchema,
@@ -69,7 +69,7 @@ function configuredRoutes(): TwilioSmsRoute[] {
   return parsed.data;
 }
 
-function outboundRoute(tenantId: string): TwilioSmsRoute {
+export function twilioRouteForTenant(tenantId: string): TwilioSmsRoute {
   const route = configuredRoutes().find((item) => item.tenantId === tenantId);
   if (!route) throw configurationError();
   return route;
@@ -142,6 +142,98 @@ function basicAuthorization(accountSid: string, authToken: string): string {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
+export function validateTwilioWebhookSignature(
+  route: TwilioSmsRoute,
+  request: ProviderWebhookRequest,
+  parameters: URLSearchParams,
+): void {
+  const supplied = request.headers["x-twilio-signature"]?.trim() ?? "";
+  const expected = expectedWebhookSignature(route, request, parameters);
+  if (!supplied || !secureEqual(supplied, expected)) {
+    throw new MessagingProviderError(
+      "Twilio webhook authentication failed.",
+      "AUTHENTICATION",
+      401,
+    );
+  }
+}
+
+export async function sendTwilioMessage(
+  route: TwilioSmsRoute,
+  from: string,
+  to: string,
+  messageBody: string,
+) {
+  const body = new URLSearchParams({
+    Body: messageBody,
+    From: from,
+    To: to,
+  });
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${route.accountSid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: basicAuthorization(route.accountSid, route.authToken),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+        signal: AbortSignal.timeout(TWILIO_TIMEOUT_MS),
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new MessagingProviderError(
+        "Twilio did not respond before the timeout.",
+        "TIMEOUT",
+        503,
+      );
+    }
+    throw new MessagingProviderError(
+      "Twilio could not be reached.",
+      "PROVIDER",
+      503,
+    );
+  }
+  const result: unknown = await response.json().catch(() => null);
+  const providerCode =
+    result &&
+    typeof result === "object" &&
+    "code" in result &&
+    typeof result.code === "number" &&
+    Number.isInteger(result.code)
+      ? result.code
+      : undefined;
+  if (!response.ok) {
+    throw new MessagingProviderError(
+      "Twilio did not accept the message.",
+      "PROVIDER",
+      502,
+      response.status,
+      providerCode,
+    );
+  }
+  const parsed = twilioSendResponseSchema.safeParse(result);
+  if (!parsed.success) {
+    throw new MessagingProviderError(
+      "Twilio returned an invalid response.",
+      "PROVIDER",
+      502,
+      response.status,
+      providerCode,
+    );
+  }
+  return {
+    provider: "TWILIO" as const,
+    externalMessageId: parsed.data.sid,
+    status: "ACCEPTED" as const,
+    acceptedAt: new Date().toISOString(),
+  };
+}
+
 function normalizedInboundPayload(parameters: URLSearchParams) {
   return {
     AccountSid: parameters.get("AccountSid"),
@@ -157,7 +249,7 @@ export const twilioSmsMessagingProvider: MessagingProviderAdapter = {
   simulated: false,
   supportedChannels: ["SMS"],
   async sendMessage(message) {
-    const route = outboundRoute(message.tenantId);
+    const route = twilioRouteForTenant(message.tenantId);
     const recipient = e164Schema.safeParse(normalizePhone(message.recipientAddress));
     if (!recipient.success) {
       throw new MessagingProviderError(
@@ -166,90 +258,17 @@ export const twilioSmsMessagingProvider: MessagingProviderAdapter = {
         400,
       );
     }
-    const body = new URLSearchParams({
-      Body: message.body,
-      From: route.fromNumber,
-      To: recipient.data,
-    });
-    let response: Response;
-    try {
-      response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${route.accountSid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            Authorization: basicAuthorization(
-              route.accountSid,
-              route.authToken,
-            ),
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: body.toString(),
-          signal: AbortSignal.timeout(TWILIO_TIMEOUT_MS),
-        },
-      );
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "TimeoutError") {
-        throw new MessagingProviderError(
-          "Twilio did not respond before the timeout.",
-          "TIMEOUT",
-          503,
-        );
-      }
-      throw new MessagingProviderError(
-        "Twilio could not be reached.",
-        "PROVIDER",
-        503,
-      );
-    }
-    const result: unknown = await response.json().catch(() => null);
-    const providerCode =
-      result &&
-      typeof result === "object" &&
-      "code" in result &&
-      typeof result.code === "number" &&
-      Number.isInteger(result.code)
-        ? result.code
-        : undefined;
-    if (!response.ok) {
-      throw new MessagingProviderError(
-        "Twilio did not accept the message.",
-        "PROVIDER",
-        502,
-        response.status,
-        providerCode,
-      );
-    }
-    const parsed = twilioSendResponseSchema.safeParse(result);
-    if (!parsed.success) {
-      throw new MessagingProviderError(
-        "Twilio returned an invalid response.",
-        "PROVIDER",
-        502,
-        response.status,
-        providerCode,
-      );
-    }
-    return {
-      provider: "TWILIO",
-      externalMessageId: parsed.data.sid,
-      status: "ACCEPTED",
-      acceptedAt: new Date().toISOString(),
-    };
+    return sendTwilioMessage(
+      route,
+      route.fromNumber,
+      recipient.data,
+      message.body,
+    );
   },
   async validateWebhook(request) {
     const parameters = webhookParameters(request.rawBody);
     const route = inboundRoute(parameters);
-    const supplied = request.headers["x-twilio-signature"]?.trim() ?? "";
-    const expected = expectedWebhookSignature(route, request, parameters);
-    if (!supplied || !secureEqual(supplied, expected)) {
-      throw new MessagingProviderError(
-        "Twilio webhook authentication failed.",
-        "AUTHENTICATION",
-        401,
-      );
-    }
+    validateTwilioWebhookSignature(route, request, parameters);
   },
   async parseIncomingMessage(request) {
     const parameters = webhookParameters(request.rawBody);

@@ -254,8 +254,10 @@ tenant-scoped; ambiguous matches require staff selection, and no match offers a
 prefilled Customer creation form. Stage 14 connects Postmark Email as the first
 real channel. Business replies can be sent by Email and customer Email replies
 return to the same Conversation through an opaque reply route. Stage 18 adds
-tenant-routed Twilio SMS for incoming and outgoing Inbox messages. Failed sends
-remain visible. WhatsApp and Facebook / Meta remain unconnected.
+tenant-routed Twilio SMS and WhatsApp for incoming and outgoing Inbox messages.
+WhatsApp free-form replies are limited to the active 24-hour customer-service
+window. Failed sends remain visible. WhatsApp templates, marketing messages,
+media and Facebook / Meta remain unconnected.
 
 ---
 

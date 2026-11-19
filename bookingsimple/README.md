@@ -373,7 +373,7 @@ completed, cancelled or no-show Bookings. Email delivery is linked to the
 Customer Conversation and Message. SMS, WhatsApp and Meta rules remain
 retryable failures until those provider adapters are connected.
 
-### Email and SMS messaging
+### Email, SMS and WhatsApp messaging
 
 Stage 13 defines the provider-neutral server boundary for outbound sends,
 webhook authenticity checks and inbound-message normalization. Provider
@@ -418,8 +418,26 @@ identity is then point-read inside that tenant partition. Twilio Message SIDs
 make webhook retries idempotent. Outbound SMS uses the tenant's configured
 number and retains the Twilio Message SID.
 
-`MOCK_TEST` remains available for local-only development. WhatsApp and
-Facebook / Meta are not connected.
+Twilio WhatsApp reuses each tenant's credentials from `TWILIO_SMS_ROUTES`.
+Set `TWILIO_WHATSAPP_SENDERS` to a bounded JSON list containing one
+tenant-to-sender mapping, then configure that WhatsApp sender's incoming
+message webhook to POST to:
+
+```text
+https://www.booksimple.app/api/webhooks/twilio/whatsapp
+```
+
+WhatsApp addresses must use E.164 format. The adapter adds Twilio's
+`whatsapp:` prefix only at the provider boundary. Signed inbound requests are
+tenant-routed by `AccountSid` plus the configured WhatsApp `To` sender before
+the customer identity is resolved within that tenant. Free-form Inbox replies
+are limited to WhatsApp's active 24-hour customer-service window. Templates,
+marketing messages, media and WhatsApp reminders are outside this increment.
+Twilio Sandbox testing also requires each test device to join the Sandbox and
+is not a production sender.
+
+`MOCK_TEST` remains available for local-only development. Facebook / Meta is
+not connected.
 
 ### Booking confirmations
 

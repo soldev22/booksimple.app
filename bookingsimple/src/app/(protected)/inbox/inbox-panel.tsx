@@ -159,7 +159,7 @@ export function InboxPanel() {
               required
               type={channel === "SMS" || channel === "WHATSAPP" ? "tel" : "text"}
             />
-            {channel === "SMS" && (
+            {(channel === "SMS" || channel === "WHATSAPP") && (
               <small>
                 Use international format with a leading + and country code,
                 for example +44 7700 900123.
