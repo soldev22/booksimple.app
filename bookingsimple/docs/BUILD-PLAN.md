@@ -1569,13 +1569,15 @@ Live validation remains required with a joined Twilio Sandbox device or an
 approved production WhatsApp sender. Stop after proving signed inbound,
 same-tenant persistence, an outbound reply and duplicate webhook idempotency.
 
-Production deployment `dpl_JDf5Q3vYbM2DAZMXc6EEef2VyDNT` completed as Ready
+Production deployment `dpl_82p2T1QNdPtbSBBmGNzhJX3sPwNH` completed as Ready
 and was assigned to `https://www.booksimple.app`. The tenant-to-Sandbox sender
 mapping is stored as a non-secret Production configuration value. The deployed
-WhatsApp webhook returns safe TwiML for malformed requests. Sandbox activation
-and webhook registration remain blocked on explicit acceptance of Twilio's
-displayed WhatsApp/Meta third-party terms; those terms were not accepted
-without the account owner's confirmation.
+WhatsApp webhook returns safe TwiML for malformed requests. The account owner
+accepted the displayed WhatsApp/Meta third-party terms and activated the
+Twilio Sandbox. Its incoming-message HTTP POST webhook is now
+`https://www.booksimple.app/api/webhooks/twilio/whatsapp`; a full console page
+reload confirmed that the setting persisted. A joined test device and live
+inbound/outbound delivery proof remain pending.
 
 ---
 
