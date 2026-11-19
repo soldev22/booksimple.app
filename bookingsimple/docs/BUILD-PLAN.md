@@ -1516,7 +1516,9 @@ an outgoing first message while opening a Conversation persisted it locally but
 did not call the channel provider. Initial outbound Email and SMS messages now
 use the same provider-backed, failure-visible delivery path as later replies;
 simulated incoming messages and channels without connected providers retain
-their existing local behavior.
+their existing local behavior. A second live attempt confirmed the form still
+defaulted to simulated incoming, so the production-safe default is now
+`Send outgoing message`; incoming simulation requires an explicit selection.
 
 Production completion remains pending until a real carrier-delivered incoming
 SMS and an outgoing Inbox reply are proven with persisted Message evidence. Do

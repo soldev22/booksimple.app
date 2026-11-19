@@ -170,9 +170,9 @@ export function InboxPanel() {
           </label>
           <label className="account-field">
             <span>First message</span>
-            <select disabled={busy} name="direction" defaultValue="INBOUND">
-              <option value="INBOUND">Incoming message (simulate)</option>
+            <select disabled={busy} name="direction" defaultValue="OUTBOUND">
               <option value="OUTBOUND">Send outgoing message</option>
+              <option value="INBOUND">Simulate an incoming message</option>
             </select>
           </label>
           <label className="account-field conversation-message-field">
