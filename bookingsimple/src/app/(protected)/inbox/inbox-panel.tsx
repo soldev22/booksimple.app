@@ -127,11 +127,10 @@ export function InboxPanel() {
       {error && <p className="account-error" role="alert">{error}</p>}
 
       <section className="account-section">
-        <h2>Start a local Conversation</h2>
+        <h2>Start a Conversation</h2>
         <p>
-          Use this development form until channel providers are connected.
-          Outbound messages stay inside BookSimple and are never shown as
-          externally delivered.
+          Outgoing Email and SMS messages use the connected provider. Other
+          channels remain local until their providers are connected.
         </p>
         <form className="conversation-create-form" onSubmit={createConversation}>
           <label className="account-field">
@@ -170,10 +169,10 @@ export function InboxPanel() {
             />
           </label>
           <label className="account-field">
-            <span>First message represents</span>
+            <span>First message</span>
             <select disabled={busy} name="direction" defaultValue="INBOUND">
               <option value="INBOUND">Incoming message (simulate)</option>
-              <option value="OUTBOUND">Local outbound reply</option>
+              <option value="OUTBOUND">Send outgoing message</option>
             </select>
           </label>
           <label className="account-field conversation-message-field">

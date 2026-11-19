@@ -134,7 +134,9 @@ export function ConversationDetailPanel({
       form.reset();
       setMessage(
         result.message.deliveryStatus === "SENT"
-          ? "Email accepted by Postmark for delivery."
+          ? conversation.channel === "SMS"
+            ? "SMS accepted by Twilio for delivery."
+            : "Email accepted by Postmark for delivery."
           : "Reply saved locally. It was not sent to an external channel.",
       );
     } catch (failure) {

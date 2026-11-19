@@ -581,7 +581,35 @@ export async function createConversation(
   request: Request,
   input: CreateConversationInput,
 ): Promise<ConversationMutationResult> {
-  const context = await contextForRequest(request);
+  return createConversationForContext(await contextForRequest(request), input);
+}
+
+async function appendInitialConversationMessage(
+  context: TenantContext,
+  conversationId: string,
+  input: CreateConversationInput,
+): Promise<ConversationView> {
+  if (input.direction === "OUTBOUND") {
+    return (
+      await addConversationMessageForContext(context, conversationId, {
+        body: input.initialMessage,
+        direction: "OUTBOUND",
+        requestId: randomUUID(),
+      })
+    ).conversation;
+  }
+  return (
+    await appendMessageForContext(context, conversationId, {
+      body: input.initialMessage,
+      direction: "INBOUND",
+    })
+  ).conversation;
+}
+
+export async function createConversationForContext(
+  context: TenantContext,
+  input: CreateConversationInput,
+): Promise<ConversationMutationResult> {
   const id = channelIdentityId(input.channel, input.normalizedContact);
   const existingIdentity = await readChannelIdentity(id, context.tenantId);
 
@@ -592,13 +620,13 @@ export async function createConversation(
       context.tenantId,
     );
     if (existingConversation) {
-      const appended = await appendMessageForContext(
+      const conversation = await appendInitialConversationMessage(
         context,
         existingIdentity.document.conversationId,
-        { body: input.initialMessage, direction: input.direction },
+        input,
       );
       return {
-        conversation: appended.conversation,
+        conversation,
         created: false,
         resolution: await resolutionForIdentity(
           context,
@@ -653,13 +681,13 @@ export async function createConversation(
         );
       }
       assertIdentityDocument(racedIdentity.document, context);
-      const appended = await appendMessageForContext(
+      const conversation = await appendInitialConversationMessage(
         context,
         racedIdentity.document.conversationId,
-        { body: input.initialMessage, direction: input.direction },
+        input,
       );
       return {
-        conversation: appended.conversation,
+        conversation,
         created: false,
         resolution: await resolutionForIdentity(
           context,
@@ -670,21 +698,20 @@ export async function createConversation(
     throw error;
   }
 
+  let conversation;
   try {
-    const conversation = await createConversationDocuments(
-      context,
-      createdIdentity.document,
-      input,
-    );
-    return {
-      conversation,
-      created: true,
-      resolution: await resolutionForIdentity(
-        context,
-        createdIdentity.document,
-        candidates,
-      ),
-    };
+    conversation =
+      input.direction === "OUTBOUND"
+        ? await createEmptyConversationDocuments(
+            context,
+            createdIdentity.document,
+            input.contactLabel,
+          )
+        : await createConversationDocuments(
+            context,
+            createdIdentity.document,
+            input,
+          );
   } catch (error) {
     try {
       await deleteChannelIdentity(
@@ -701,6 +728,22 @@ export async function createConversation(
     }
     throw error;
   }
+  if (input.direction === "OUTBOUND") {
+    conversation = await appendInitialConversationMessage(
+      context,
+      conversation.id,
+      input,
+    );
+  }
+  return {
+    conversation,
+    created: true,
+    resolution: await resolutionForIdentity(
+      context,
+      createdIdentity.document,
+      candidates,
+    ),
+  };
 }
 
 export async function getConversationDetailsForContext(

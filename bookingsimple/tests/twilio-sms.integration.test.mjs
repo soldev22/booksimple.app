@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import {
   addConversationMessageForContext,
+  createConversationForContext,
+  getConversationDetailsForContext,
   processIncomingProviderMessage,
 } from "../src/server/conversation-service.ts";
 import {
@@ -41,8 +43,8 @@ test(
     const previousFetch = globalThis.fetch;
     const now = new Date().toISOString();
     const conversations = [
-      { tenantId: tenantA, conversationId: conversationA },
-      { tenantId: tenantB, conversationId: conversationB },
+      { tenantId: tenantA, conversationId: conversationA, address: sender },
+      { tenantId: tenantB, conversationId: conversationB, address: sender },
     ];
     process.env.MESSAGING_PROVIDER = "POSTMARK";
     process.env.TWILIO_SMS_ROUTES = JSON.stringify([
@@ -145,6 +147,29 @@ test(
       assert.equal(repeated.message.id, sent.message.id);
       assert.equal(sendCount, 1);
 
+      const initialRecipient = "+447700900124";
+      const initial = await createConversationForContext(tenantContext, {
+        channel: "SMS",
+        normalizedContact: initialRecipient,
+        contactLabel: "Initial SMS recipient",
+        initialMessage: "This first message must be sent.",
+        direction: "OUTBOUND",
+      });
+      conversations.push({
+        tenantId: tenantA,
+        conversationId: initial.conversation.id,
+        address: initialRecipient,
+      });
+      assert.equal(initial.created, true);
+      const initialDetails = await getConversationDetailsForContext(
+        tenantContext,
+        initial.conversation.id,
+        { messagePageSize: 50 },
+      );
+      assert.equal(initialDetails.messages.length, 1);
+      assert.equal(initialDetails.messages[0].deliveryStatus, "SENT");
+      assert.equal(sendCount, 2);
+
       const incoming = {
         provider: "TWILIO",
         tenantId: tenantA,
@@ -208,7 +233,7 @@ test(
             .catch(() => {});
         }
         await channelIdentityContainer()
-          .item(identityId(sender), item.tenantId)
+          .item(identityId(item.address), item.tenantId)
           .delete()
           .catch(() => {});
       }
