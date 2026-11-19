@@ -869,6 +869,24 @@ EmailProvider
 
 Do not call external communication APIs directly from React components or domain business logic.
 
+Stage 13 implements `MessagingProviderAdapter` with `sendMessage`,
+`validateWebhook` and `parseIncomingMessage`. The contract exchanges only
+provider-neutral outbound requests, receipts and normalized incoming messages.
+Provider payloads are accepted as raw text plus bounded headers and remain
+inside the adapter.
+
+The initial `MOCK_TEST` adapter supports the four normalized communication
+channels. It creates deterministic outbound references for retry safety,
+validates a development-only SHA-256 body digest before parsing, validates its
+payload at runtime and normalizes addresses and timestamps. The messaging
+service validates both outbound input and adapter output and rejects unsupported
+channels or unknown provider configuration explicitly.
+
+Message documents can retain optional provider, external-message and
+provider-event identifiers for later reconciliation without changing the
+Conversation model. No real provider is selected in Stage 13, no public
+messaging webhook is exposed, and Inbox replies remain `LOCAL_ONLY`.
+
 ---
 
 # 15. Incoming Message Flow

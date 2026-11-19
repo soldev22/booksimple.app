@@ -340,8 +340,9 @@ export function ConversationDetailPanel({
               />
             </label>
             <p className="conversation-local-note">
-              Outbound replies are local-only during Stage 8 and are not sent
-              through WhatsApp, Meta, SMS or email.
+              The Stage 13 provider interface is ready, but no real channel is
+              connected. Outbound replies remain local-only and are not sent
+              through WhatsApp, Facebook / Meta, SMS or email.
             </p>
             <button className="account-button" disabled={Boolean(busy)} type="submit">
               {busy === "message" ? "Saving..." : "Save message"}

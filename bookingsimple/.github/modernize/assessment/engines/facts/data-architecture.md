@@ -186,6 +186,9 @@ erDiagram
         string channel
         string body
         string deliveryStatus
+        string messagingProvider
+        string externalMessageId
+        string providerEventId
         string createdAt
     }
     Booking {
@@ -267,6 +270,7 @@ control records omitted from the relationship diagram to keep it readable.
 | Customer management | `customer-storage.ts` and `customer-service.ts` | `queryCustomerPage`, `getCustomer`, `createCustomer`, `updateCustomer`, `archiveCustomer`, `eraseCustomer` | Single-partition pagination, point reads, ETag writes, duplicate warnings and lifecycle operations |
 | Service management | `service-storage.ts` and `service-service.ts` | `queryServicePage`, `getService`, `createService`, `updateService`, `setServiceActive` | Single-partition pagination, point reads, ETag writes and active lifecycle operations |
 | Conversation management | `conversation-storage.ts` and `conversation-service.ts` | `queryConversationPage`, `getConversationDetailsForContext`, `createConversation`, `addConversationMessage`, `linkConversationCustomer` | Tenant-key listings, hierarchical point reads, transactional message and summary writes, exact matching and guarded Customer resolution |
+| Messaging providers | `messaging-provider.ts`, `messaging-service.ts` and provider adapters | `sendProviderMessage`, `parseProviderWebhook` | Runtime-validated provider-neutral outbound receipts and normalized inbound messages; provider payloads stay inside adapters |
 | Booking management | `booking-storage.ts` and `booking-service.ts` | `queryBookingPage`, `getBooking`, `createBooking`, `updateBooking`, `setBookingStatus`, `overrideBookingDeposit` | Tenant pagination, point reads, reference validation, timezone conversion, snapshotted deposit terms, ETag edits and lifecycle status |
 | Payment management | `payment-storage.ts` and `payment-service.ts` | `queryBookingPayments`, `createPayment`, `confirmMockPayment`, `processStripeWebhook` | Tenant-scoped deposit and balance Payments, hosted Checkout, signed event validation, ETag transitions and retry-safe Booking reconciliation |
 | Reminder management | `reminder-storage.ts` and `reminder-service.ts` | `queryBookingReminders`, `createBookingReminders`, `rescheduleBookingReminders`, `processDueReminders` | Tenant-scoped Reminder snapshots, ETag scheduling updates, terminal cancellation and lease-based mock processing |

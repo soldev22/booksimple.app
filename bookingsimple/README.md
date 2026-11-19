@@ -360,6 +360,21 @@ open browser. Processing uses ETags and expiring leases, skips duplicate sends,
 reschedules unsent reminders when Booking time changes, and cancels unsent
 reminders for completed, cancelled or no-show Bookings.
 
+### Messaging provider interface
+
+Stage 13 defines one provider-neutral server boundary for outbound sends,
+webhook authenticity checks and inbound-message normalization. Provider
+payloads remain inside adapters; Conversation and Message records use the
+normalized channel, address, body, timestamps and optional provider
+correlation identifiers.
+
+`MESSAGING_PROVIDER` currently accepts only `MOCK_TEST`. The mock adapter
+supports the four internal channels, produces deterministic outbound
+references, validates a development-only body digest and converts its own
+payload into the internal incoming-message model. It does not contact an
+external service. Inbox replies intentionally remain `LOCAL_ONLY` until Stage
+14 selects and connects one real provider.
+
 ### Customer management
 
 Active company users can open `/customers` to create, search, view, edit and
@@ -481,7 +496,7 @@ Do not automatically begin the next stage.
 
 Completed stage:
 
-STAGE 12 — Reminder Domain
+STAGE 13 — Messaging Provider Interface
 
 Status:
 
@@ -489,12 +504,13 @@ COMPLETE.
 
 Current work:
 
-Stages 1 through 12 are implemented. The Payment provider can remain the
+Stages 1 through 13 are implemented. The Payment provider can remain the
 clearly labelled `MOCK_TEST`, or be explicitly configured for tenant-owned
 Stripe Connect test accounts and hosted Checkout. Stripe sandbox validation is
 pending external configuration and production payments are not enabled.
-Reminder delivery is deliberately simulated until the messaging-provider
-stages are implemented. Stage 13 has not started.
+Reminder delivery remains deliberately simulated. The messaging-provider
+contract and mock adapter are complete, but no real communication channel is
+connected and Inbox replies remain local-only. Stage 14 has not started.
 
 ---
 

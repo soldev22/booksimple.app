@@ -45,6 +45,9 @@ export type MessageDocument = ItemDefinition & {
   channel: CommunicationChannel;
   body: string;
   deliveryStatus: MessageDeliveryStatus;
+  messagingProvider?: string;
+  externalMessageId?: string;
+  providerEventId?: string;
   createdAt: string;
 };
 

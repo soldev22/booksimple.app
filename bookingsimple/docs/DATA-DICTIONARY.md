@@ -64,6 +64,11 @@ will not copy this pattern automatically.
 | `payment` | Tracks a provider-safe payment request and its result | Booking ID, type, minor-unit amount, currency, status, provider reference and timestamps | Company tenant | Durable financial history until an approved retention policy exists | Yes |
 | `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease and mock provider reference | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
 
+Conversation Message records may additionally retain a non-secret messaging
+provider name, external message ID and provider event ID. These values support
+delivery correlation and idempotency; raw provider webhook payloads and
+credentials are not stored in Message documents.
+
 ## Retention Rules
 
 Retention values are centralized in

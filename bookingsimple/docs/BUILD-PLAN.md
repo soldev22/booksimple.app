@@ -1167,6 +1167,26 @@ internal Message models.
 - mock provider implements the interface
 - provider can be replaced without redesigning Conversation or Message
 
+Implemented with a server-only `MessagingProviderAdapter` defining
+`sendMessage`, `validateWebhook` and `parseIncomingMessage`. Its inputs and
+outputs use normalized internal channel, address, body, timestamp and
+correlation types; provider-specific payloads are raw only at the adapter
+boundary.
+
+The `MOCK_TEST` adapter supports WHATSAPP, FACEBOOK, SMS and EMAIL, returns a
+deterministic external message reference for the same internal Message ID,
+validates a development-only body digest before parsing, and translates its
+strict runtime-validated payload into normalized incoming messages. The
+messaging service validates outbound requests and untrusted adapter results,
+bounds webhook bodies and fails explicitly for unknown providers or
+unsupported channels.
+
+Message documents now allow optional provider, external-message and
+provider-event identifiers so later delivery events can correlate without
+redesigning Conversation storage. No real provider, public communication
+webhook or external send is introduced. Existing Inbox replies remain
+`LOCAL_ONLY` until Stage 14 selects one real channel.
+
 STOP after completion.
 
 ---

@@ -251,9 +251,10 @@ Core conversation behaviour must remain independent of individual communication 
 The implemented first Inbox allows communication to begin with either a linked
 Customer or an unresolved contact. Exact email and phone matching remains
 tenant-scoped; ambiguous matches require staff selection, and no match offers a
-prefilled Customer creation form. Stage 8 messages are local development
-records only. Outbound replies are clearly marked local-only and are not sent
-through WhatsApp, Meta, SMS or email.
+prefilled Customer creation form. Current messages are local development
+records only. Stage 13 adds a provider-neutral adapter boundary and mock
+provider, but outbound replies remain clearly marked local-only and are not
+sent through WhatsApp, Meta, SMS or email until a real channel is selected.
 
 ---
 
