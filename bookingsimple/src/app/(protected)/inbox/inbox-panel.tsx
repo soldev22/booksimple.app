@@ -129,8 +129,8 @@ export function InboxPanel() {
       <section className="account-section">
         <h2>Start a Conversation</h2>
         <p>
-          Outgoing Email and SMS messages use the connected provider. Other
-          channels remain local until their providers are connected.
+          Outgoing Email, SMS and WhatsApp messages use connected providers.
+          WhatsApp free-form replies require an active customer-service window.
         </p>
         <form className="conversation-create-form" onSubmit={createConversation}>
           <label className="account-field">
