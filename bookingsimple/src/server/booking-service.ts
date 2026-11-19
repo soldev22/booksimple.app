@@ -16,6 +16,7 @@ import {
   readBookingDocument,
   replaceBookingDocument,
 } from "./booking-storage";
+import { ensureBookingConfirmation } from "./booking-confirmation-service";
 import { isTimeZone, localDateTimeToUtc } from "./booking-time";
 import {
   BOOKING_SCHEMA_VERSION,
@@ -545,7 +546,11 @@ async function transitionBookingForPayment(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const current = await readOwnedBooking(context, id);
     if (current.document.status === target) {
-      return toBookingView(context, current.document);
+      const booking = await toBookingView(context, current.document);
+      if (target === "CONFIRMED") {
+        await ensureBookingConfirmation(context, booking);
+      }
+      return booking;
     }
     if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
       return toBookingView(context, current.document);
@@ -568,7 +573,11 @@ async function transitionBookingForPayment(
         },
         current.etag,
       );
-      return toBookingView(context, updated.document);
+      const booking = await toBookingView(context, updated.document);
+      if (target === "CONFIRMED") {
+        await ensureBookingConfirmation(context, booking);
+      }
+      return booking;
     } catch (error) {
       if (isPreconditionFailed(error)) continue;
       throw error;
@@ -602,7 +611,11 @@ export async function setBookingStatus(
     if (NON_EDITABLE_STATUSES.includes(status)) {
       await cancelBookingReminders(context.tenantId, id);
     }
-    return toBookingView(context, current.document);
+    const booking = await toBookingView(context, current.document);
+    if (status === "CONFIRMED") {
+      await ensureBookingConfirmation(context, booking);
+    }
+    return booking;
   }
   if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
     throw bookingError(
@@ -622,7 +635,11 @@ export async function setBookingStatus(
     if (NON_EDITABLE_STATUSES.includes(status)) {
       await cancelBookingReminders(context.tenantId, id);
     }
-    return toBookingView(context, updated.document);
+    const booking = await toBookingView(context, updated.document);
+    if (status === "CONFIRMED") {
+      await ensureBookingConfirmation(context, booking);
+    }
+    return booking;
   } catch (error) {
     if (isPreconditionFailed(error)) {
       throw bookingError(409, "The Booking changed. Refresh and retry.");

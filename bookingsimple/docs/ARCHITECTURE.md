@@ -1186,6 +1186,27 @@ Payment, Session, amount and currency before an ETag transition. The signed
 webhook is the sole authority for `PAID`; a redirect back to the Booking only
 causes the UI to reload provider-backed state.
 
+## Implemented Booking Confirmation Messaging
+
+When a Booking first reaches `CONFIRMED`, Stage 16 creates a deterministic
+tenant-owned Booking confirmation record before dispatch. This record is the
+idempotency gate for manual status changes, payment webhook retries and
+concurrent confirmation attempts.
+
+Routing reuses the originating Conversation when its channel is supported by
+the configured messaging adapter. Otherwise, it creates or reuses the
+Customer's exact Email Conversation when Email is available. Confirmations
+flow through the existing provider-neutral outbound Message service, so mock
+delivery remains explicitly `LOCAL_ONLY` and Postmark delivery records
+`PENDING`, `SENT` or `FAILED` using the existing provider correlation fields.
+
+The confirmation contains the Customer and Business names, snapshotted
+Service, tenant-local start time, duration and Booking reference. A missing
+supported contact or provider failure never rolls back the confirmed Booking;
+it produces an explicit failed confirmation record for staff resolution.
+Confirmation records contain references and safe status metadata only, never
+provider credentials or raw payloads.
+
 ---
 
 # 23. Reminders

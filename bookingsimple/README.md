@@ -127,9 +127,9 @@ and must be reassessed before using real data or deploying to production.
 
 1. Configure `.env.local` from `.env.example` using one of the local Cosmos
    authentication options above.
-   Set the exact `APP_ORIGIN` (for example `http://localhost:3000` locally,
-   HTTPS in production). Production requests and email links must use the same
-   origin.
+   Set the exact `APP_ORIGIN`: use `http://localhost:3000` locally and
+   `https://www.booksimple.app` in production. Production requests and email
+   links must use the same origin.
 2. Generate a 32-byte base64 value for `AUTH_NOTIFICATION_ENCRYPTION_KEY`
    using the command in `.env.example`. Keep it server-side and securely
    backed up; losing or replacing it makes existing encrypted outbox data
@@ -331,11 +331,12 @@ APP_ORIGIN=http://localhost:3000
 Configure these exact Stripe Connect OAuth redirect URIs:
 
 - local: `http://localhost:3000/api/stripe/connect/oauth/callback`
-- production: `<APP_ORIGIN>/api/stripe/connect/oauth/callback`
+- production:
+  `https://www.booksimple.app/api/stripe/connect/oauth/callback`
 
 Create a Connect webhook endpoint for
-`<APP_ORIGIN>/api/stripe/webhook`, configured to receive events from connected
-accounts. Subscribe to `checkout.session.completed`,
+`https://www.booksimple.app/api/stripe/webhook`, configured to receive events
+from connected accounts. Subscribe to `checkout.session.completed`,
 `checkout.session.async_payment_succeeded`, and
 `checkout.session.async_payment_failed`. A Stripe CLI listener uses its own
 displayed `whsec_...` secret rather than the Dashboard endpoint secret.
@@ -386,7 +387,7 @@ per-Conversation Postmark `MailboxHash` route.
 Configure the Postmark inbound stream to POST to:
 
 ```text
-https://<public-origin>/api/webhooks/postmark/inbound
+https://www.booksimple.app/api/webhooks/postmark/inbound
 ```
 
 Protect that URL with the same generated Basic Auth username and password held
@@ -398,6 +399,19 @@ logs.
 
 `MOCK_TEST` remains available for local-only development. SMS, WhatsApp and
 Facebook / Meta are not connected in Stage 14.
+
+### Booking confirmations
+
+Stage 16 sends one controlled confirmation when a Booking first reaches
+`CONFIRMED`. The system reuses a supported originating Conversation, or falls
+back to the Customer's Email Conversation. Local `MOCK_TEST` confirmations are
+recorded as `LOCAL_ONLY`; configured Postmark Email confirmations use the real
+outbound provider and retain sent or failed state in the Conversation.
+
+Run `npm run provision:data` after deploying Stage 16 to create or verify the
+tenant-partitioned `booking-confirmations` container. Missing supported contact
+details or provider failure does not roll back the Booking status; an explicit
+failed confirmation record prevents uncontrolled duplicate sends.
 
 ### Customer management
 

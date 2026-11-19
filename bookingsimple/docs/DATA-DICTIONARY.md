@@ -36,6 +36,7 @@ human-readable. Raw secrets, passwords and session tokens are never stored.
 | `conversations` | Tenant-owned Conversation threads | `/tenantId`, then `/conversationId` | Conversation summaries and separate Messages |
 | `channel-identities` | Tenant-owned communication contact identities | `/tenantId` | Normalized channel addresses and optional Customer links |
 | `bookings` | Tenant-owned Booking records | `/tenantId` | Customer and Service references, UTC times, timezone, snapshots and status |
+| `booking-confirmations` | Tenant-owned Booking confirmation attempts | `/tenantId` | Booking, Customer, Conversation and Message references with delivery outcome |
 | `payments` | Tenant-owned internal Payment records | `/tenantId` | Booking references, minor-unit amounts, provider references and lifecycle status; never card details |
 | `reminders` | Tenant-owned Booking reminder records | `/tenantId` | Booking references, UTC schedules, channel labels, processing leases, attempts and mock delivery results |
 
@@ -62,6 +63,7 @@ will not copy this pattern automatically.
 | `deleted-user-tombstone` | Preserves a minimal anonymized deletion history when an email is reused | Former user ID and deletion timestamps | Platform | 1 year | No |
 | `platform-bootstrap-lock` | Permanently prevents a second first-platform-administrator bootstrap | Selected user ID, setup-token hash and completion state | Platform security | Permanent | No |
 | `payment` | Tracks a provider-safe payment request and its result | Booking ID, type, minor-unit amount, currency, status, provider reference and timestamps | Company tenant | Durable financial history until an approved retention policy exists | Yes |
+| `booking-confirmation` | Controls one confirmation attempt per confirmed Booking | Booking, Customer, Conversation and Message references, channel, status and safe failure category | Company tenant | Durable Booking history until an approved retention policy exists | Through the linked Conversation |
 | `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease and mock provider reference | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
 
 Conversation Message records may additionally retain a non-secret messaging
@@ -105,6 +107,7 @@ Major business domains use dedicated containers rather than expanding
 | Conversations and messages | `conversations` | `/tenantId`, then `/conversationId` | Implemented and provisioned |
 | Channel identities | `channel-identities` | `/tenantId` | Implemented and provisioned |
 | Bookings | `bookings` | `/tenantId` | Implemented and provisioned |
+| Booking confirmations | `booking-confirmations` | `/tenantId` | Implemented for Stage 16 |
 | Payments | `payments` | `/tenantId` | Approved for Stage 11 |
 | Reminders | `reminders` | `/tenantId` | Implemented and provisioned for Stage 12 |
 
@@ -450,6 +453,42 @@ Legacy Stage 9 Booking documents are migrated to schema version 2 with an
 explicit 0% default and applied deposit, zero minor-unit deposit amount and no
 override. This avoids inventing a historic obligation that did not previously
 exist.
+
+## Approved Booking Confirmation Document
+
+Stage 16 stores one durable confirmation record per Booking in the dedicated
+`booking-confirmations` container partitioned by `/tenantId`.
+
+```json
+{
+  "id": "booking-confirmation-booking-guid",
+  "tenantId": "business-guid",
+  "type": "booking-confirmation",
+  "schemaVersion": 1,
+  "bookingId": "booking-guid",
+  "customerId": "customer-guid",
+  "status": "SENT",
+  "conversationId": "conversation-guid",
+  "messageId": "deterministic-message-guid",
+  "channel": "EMAIL",
+  "messageDeliveryStatus": "SENT",
+  "createdAt": "2026-11-19T16:00:00.000Z",
+  "updatedAt": "2026-11-19T16:00:01.000Z"
+}
+```
+
+The deterministic confirmation ID is the idempotency gate. Only the process
+that creates it may dispatch the confirmation; concurrent or repeated
+confirmation transitions return the existing record. The linked outbound
+Message remains the customer-visible communication and retains provider
+delivery state.
+
+Routing first reuses the Booking's originating Conversation when its channel
+is supported by the configured provider. Otherwise, the system creates or
+reuses the Customer's exact Email Conversation. If neither route is available,
+the Booking remains confirmed and the confirmation records
+`FAILED`/`NO_SUPPORTED_CONTACT`. Provider failures record `FAILED`/`DELIVERY`
+and remain visible through the linked failed outbound Message.
 
 ## Approved Payment Document
 

@@ -24,6 +24,7 @@ import {
 import {
   CONVERSATION_SCHEMA_VERSION,
   type ChannelIdentityDocument,
+  type CommunicationChannel,
   type ContactResolution,
   type ConversationDetails,
   type ConversationDocument,
@@ -399,6 +400,134 @@ async function createConversationDocuments(
     },
   ]);
   return toConversationView(conversation, context);
+}
+
+async function createEmptyConversationDocuments(
+  context: TenantContext,
+  identity: ChannelIdentityDocument,
+  contactLabel: string,
+): Promise<ConversationView> {
+  const createdAt = new Date().toISOString();
+  const conversation: ConversationDocument = {
+    id: identity.conversationId,
+    tenantId: context.tenantId,
+    conversationId: identity.conversationId,
+    type: "conversation",
+    schemaVersion: CONVERSATION_SCHEMA_VERSION,
+    channelIdentityId: identity.id,
+    customerId: identity.customerId,
+    contactLabel,
+    channel: identity.channel,
+    messageCount: 0,
+    lastMessagePreview: "",
+    lastMessageDirection: "OUTBOUND",
+    lastMessageAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  };
+  await commitConversationBatch(context.tenantId, conversation.id, [
+    {
+      operationType: "Create",
+      resourceBody: conversation,
+      ifNoneMatch: "*",
+    },
+  ]);
+  return toConversationView(conversation, context);
+}
+
+export type EnsureCustomerConversationInput = {
+  customerId: string;
+  channel: CommunicationChannel;
+  normalizedContact: string;
+  contactLabel: string;
+};
+
+export async function ensureCustomerConversationForContext(
+  context: TenantContext,
+  input: EnsureCustomerConversationInput,
+): Promise<ConversationView> {
+  const id = channelIdentityId(input.channel, input.normalizedContact);
+  const existingIdentity = await readChannelIdentity(id, context.tenantId);
+  if (existingIdentity) {
+    assertIdentityDocument(existingIdentity.document, context);
+    if (existingIdentity.document.customerId !== input.customerId) {
+      throw new StorageError(
+        "The selected contact is already associated with another or unresolved Customer.",
+        409,
+      );
+    }
+    const existingConversation = await readConversationDocument(
+      existingIdentity.document.conversationId,
+      context.tenantId,
+    );
+    if (existingConversation) {
+      assertConversationDocument(existingConversation.document, context);
+      if (existingConversation.document.customerId !== input.customerId) {
+        throw new StorageError(
+          "The selected Conversation belongs to another Customer.",
+          409,
+        );
+      }
+      return toConversationView(existingConversation.document, context);
+    }
+    return createEmptyConversationDocuments(
+      context,
+      existingIdentity.document,
+      input.contactLabel,
+    );
+  }
+
+  const now = new Date().toISOString();
+  const provisionalIdentity: ChannelIdentityDocument = {
+    id,
+    tenantId: context.tenantId,
+    type: "channel-identity",
+    schemaVersion: CONVERSATION_SCHEMA_VERSION,
+    channel: input.channel,
+    normalizedAddress: input.normalizedContact,
+    displayLabel: input.contactLabel,
+    conversationId: randomUUID(),
+    customerId: input.customerId,
+    createdAt: now,
+    updatedAt: now,
+  };
+  let createdIdentity;
+  try {
+    createdIdentity = await createChannelIdentity(provisionalIdentity);
+  } catch (error) {
+    if (isStatus(error, 409)) {
+      return ensureCustomerConversationForContext(context, input);
+    }
+    throw error;
+  }
+  try {
+    return await createEmptyConversationDocuments(
+      context,
+      createdIdentity.document,
+      input.contactLabel,
+    );
+  } catch (error) {
+    try {
+      await deleteChannelIdentity(
+        createdIdentity.document.id,
+        context.tenantId,
+        createdIdentity.etag,
+      );
+    } catch (cleanupError) {
+      console.error(
+        JSON.stringify({
+          event: "empty-conversation-identity-rollback-failed",
+          tenantId: context.tenantId,
+          identityId: createdIdentity.document.id,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.name
+              : "UnknownError",
+        }),
+      );
+    }
+    throw error;
+  }
 }
 
 export async function listConversationsForContext(

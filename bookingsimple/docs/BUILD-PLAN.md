@@ -1373,6 +1373,13 @@ Ensure retries cannot repeatedly send confirmations without control.
 - duplicate confirmation risk is controlled
 - provider failure is handled
 
+Implemented routing reuses a supported originating Conversation and otherwise
+falls back to the Customer's Email Conversation. A deterministic tenant-owned
+confirmation record and Message request ID control duplicate sends across
+manual transitions and payment webhook retries. Missing contact details or
+provider failures leave the Booking confirmed and record an explicit failed
+confirmation outcome.
+
 STOP after completion.
 
 ---

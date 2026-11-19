@@ -12,6 +12,7 @@ import {
   CONVERSATION_CONTAINER_ID,
 } from "../src/server/conversation-types";
 import { BOOKING_CONTAINER_ID } from "../src/server/booking-types";
+import { BOOKING_CONFIRMATION_CONTAINER_ID } from "../src/server/booking-confirmation-types";
 import { PAYMENT_CONTAINER_ID } from "../src/server/payment-types";
 import { REMINDER_CONTAINER_ID } from "../src/server/reminder-types";
 
@@ -59,6 +60,11 @@ const containerDefinitions: ContainerDefinition[] = [
   },
   {
     id: BOOKING_CONTAINER_ID,
+    partitionKeyPaths: ["/tenantId"],
+    partitionKeyKind: "Hash",
+  },
+  {
+    id: BOOKING_CONFIRMATION_CONTAINER_ID,
     partitionKeyPaths: ["/tenantId"],
     partitionKeyKind: "Hash",
   },
