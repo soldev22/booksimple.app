@@ -31,6 +31,8 @@ function isBusiness(value: unknown): value is BusinessSettingsView {
     typeof value.status === "string" &&
     "timezone" in value &&
     typeof value.timezone === "string" &&
+    "country" in value &&
+    typeof value.country === "string" &&
     "currency" in value &&
     typeof value.currency === "string" &&
     "defaultDepositPercentage" in value &&
@@ -173,9 +175,13 @@ async function api(
 
 type BusinessSettingsPanelProps = {
   section: "profile" | "invitations";
+  stripeResult?: "connected" | "cancelled" | "error";
 };
 
-export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
+export function BusinessSettingsPanel({
+  section,
+  stripeResult,
+}: BusinessSettingsPanelProps) {
   const [setup, setSetup] = useState<BusinessSetupView | null>(null);
   const [busy, setBusy] = useState(false);
   const [stripeConnection, setStripeConnection] =
@@ -183,8 +189,18 @@ export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
   const [reminderRules, setReminderRules] = useState<
     BusinessReminderRule[]
   >([]);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState(
+    stripeResult === "error"
+      ? "Stripe account connection could not be completed. Retry."
+      : "",
+  );
+  const [message, setMessage] = useState(
+    stripeResult === "connected"
+      ? "The existing Stripe account was connected."
+      : stripeResult === "cancelled"
+        ? "Stripe account connection was cancelled."
+        : "",
+  );
 
   async function load() {
     setError("");
@@ -400,6 +416,11 @@ export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
                 <small>Use an IANA timezone such as Europe/London.</small>
               </label>
               <label className="account-field">
+                <span>Country</span>
+                <input name="country" defaultValue={business.country} minLength={2} maxLength={2} required disabled={busy} />
+                <small>Use a two-letter country code such as GB, IE or US.</small>
+              </label>
+              <label className="account-field">
                 <span>Currency</span>
                 <input name="currency" defaultValue={business.currency} minLength={3} maxLength={3} required disabled={busy} />
                 <small>Use a three-letter currency code such as GBP, EUR or USD.</small>
@@ -493,6 +514,7 @@ export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
             <dl className="business-details">
               <div><dt>Business name</dt><dd>{business.name}</dd></div>
               <div><dt>Timezone</dt><dd>{business.timezone}</dd></div>
+              <div><dt>Country</dt><dd>{business.country}</dd></div>
               <div><dt>Currency</dt><dd>{business.currency}</dd></div>
               <div>
                 <dt>Default deposit</dt>
@@ -576,8 +598,8 @@ export function BusinessSettingsPanel({ section }: BusinessSettingsPanelProps) {
                     {busy
                       ? "Opening Stripe..."
                       : stripeConnection.status === "NOT_CONNECTED"
-                        ? "Connect this Business to Stripe"
-                        : "Continue Stripe onboarding"}
+                        ? "Connect an existing Stripe account"
+                        : "Reconnect Stripe account"}
                   </button>
                 )}
               {stripeConnection.status === "READY" && (

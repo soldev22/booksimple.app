@@ -591,11 +591,12 @@ styling.
 ## Implemented Business Setup
 
 Business documents retain the business GUID as both ID and partition key and
-now include an explicit IANA timezone and three-letter operating currency.
-New registrations receive `Europe/London` and `GBP` defaults. The idempotent
+now include an explicit IANA timezone, two-letter ISO country and three-letter
+operating currency. New registrations receive `Europe/London`, `GB` and `GBP`
+defaults. The idempotent
 business-settings migration adds those fields to older documents only when
 missing; it does not overwrite configured values. Company administrators can
-update the business name, timezone and currency. Company users can read those
+update the business name, timezone, country and currency. Company users can read those
 settings but cannot update them. The Business profile is shown only on the
 Account page. Company administrators create and manage invitations alongside
 the tenant-scoped user directory on the Users page.
@@ -1141,6 +1142,12 @@ REFUNDED
 
 ## Implemented Payment Domain and Stripe Connect
 
+Stripe Connect OAuth allows a Business administrator to connect an existing
+Stripe account instead of creating a duplicate merchant account. The OAuth
+request uses `read_write` scope, an exact configured callback URI and a
+single-use, tenant-bound server-side state record. BookSimple stores only the
+connected account ID and never persists OAuth access or refresh tokens.
+
 Payments are separate schema-version-1 documents in the dedicated `payments`
 container partitioned by the server-resolved `/tenantId`. Each record stores a
 Booking ID reference, safe integer minor-unit amount, currency, explicit
@@ -1166,11 +1173,11 @@ Creating a pending deposit Payment moves the Booking to
 overrides and Service changes are rejected after a pending or paid deposit
 Payment exists, preserving the snapshotted financial terms.
 
-Each tenant onboards its own Stripe Accounts v2 Merchant account through
-Stripe-hosted onboarding. The account uses the full Stripe Dashboard, direct
-charges, Stripe fee and loss collection, and no BookSimple application fee.
-Test and live account references are stored separately on the Business; secret
-keys and one-time onboarding or Checkout URLs are not persisted.
+Each tenant connects its existing full-Dashboard Stripe account through Connect
+OAuth. Checkout uses direct charges, Stripe fee collection and no BookSimple
+application fee. Test and live account references are stored separately on the
+Business; secret keys, OAuth tokens and one-time authorization or Checkout URLs
+are not persisted.
 
 Checkout Sessions are created on the connected account with server-derived
 amount, currency and metadata. Connect webhooks read the exact raw body and

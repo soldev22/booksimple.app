@@ -7,6 +7,7 @@ import {
   replaceDocument,
 } from "../src/server/auth-storage";
 import {
+  DEFAULT_BUSINESS_COUNTRY,
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
   DEFAULT_DEPOSIT_PERCENTAGE,
@@ -25,6 +26,7 @@ async function run(): Promise<void> {
   for (const business of businesses) {
     if (
       business.timezone &&
+      business.country &&
       business.currency &&
       business.defaultDepositPercentage !== undefined &&
       business.reminderRules !== undefined
@@ -43,6 +45,7 @@ async function run(): Promise<void> {
         {
           ...current.resource,
           timezone: current.resource.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
+          country: current.resource.country ?? DEFAULT_BUSINESS_COUNTRY,
           currency: current.resource.currency ?? DEFAULT_BUSINESS_CURRENCY,
           defaultDepositPercentage:
             current.resource.defaultDepositPercentage ??

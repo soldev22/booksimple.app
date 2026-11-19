@@ -327,6 +327,7 @@ async function run() {
       {
         name: initialBusinessSetup.business.name,
         timezone: initialBusinessSetup.business.timezone,
+        country: initialBusinessSetup.business.country,
         currency: initialBusinessSetup.business.currency,
         defaultDepositPercentage:
           initialBusinessSetup.business.defaultDepositPercentage,
@@ -336,6 +337,7 @@ async function run() {
       {
         name: "Synthetic test business",
         timezone: "Europe/London",
+        country: "GB",
         currency: "GBP",
         defaultDepositPercentage: 0,
         reminderRules: [],
@@ -348,6 +350,7 @@ async function run() {
       {
         name: "Updated synthetic business",
         timezone: "America/New_York",
+        country: "US",
         currency: "USD",
         defaultDepositPercentage: 25,
         reminderRules: [
@@ -361,6 +364,7 @@ async function run() {
   );
   assert.equal(updatedBusiness.name, "Updated synthetic business");
   assert.equal(updatedBusiness.timezone, "America/New_York");
+  assert.equal(updatedBusiness.country, "US");
   assert.equal(updatedBusiness.currency, "USD");
   assert.equal(updatedBusiness.defaultDepositPercentage, 25);
   assert.equal(updatedBusiness.reminderRules.length, 1);
@@ -473,6 +477,7 @@ async function run() {
         updateBusinessSettings(staffRequest, {
           name: "Forbidden update",
           timezone: "Europe/London",
+          country: "GB",
           currency: "GBP",
           defaultDepositPercentage: 50,
           reminderRules: [],

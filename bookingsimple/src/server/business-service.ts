@@ -23,6 +23,7 @@ import {
   StorageError,
 } from "./auth-storage";
 import {
+  DEFAULT_BUSINESS_COUNTRY,
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
   DEFAULT_DEPOSIT_PERCENTAGE,
@@ -102,6 +103,7 @@ function toBusinessSettings(
     name: document.name,
     status: document.status,
     timezone: document.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
+    country: document.country ?? DEFAULT_BUSINESS_COUNTRY,
     currency: document.currency ?? DEFAULT_BUSINESS_CURRENCY,
     defaultDepositPercentage:
       document.defaultDepositPercentage ?? DEFAULT_DEPOSIT_PERCENTAGE,
@@ -165,6 +167,7 @@ export async function updateBusinessSettings(
         ...business.document,
         name: input.name,
         timezone: input.timezone,
+        country: input.country,
         currency: input.currency,
         defaultDepositPercentage: input.defaultDepositPercentage,
         reminderRules: input.reminderRules,

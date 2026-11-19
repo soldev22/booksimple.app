@@ -5,9 +5,20 @@ import Link from "next/link";
 import { BusinessSettingsPanel } from "../settings/business-settings-panel";
 import { ApplicationResubmissionForm } from "./application-resubmission-form";
 
-export default async function AccountPage() {
+type AccountPageProps = {
+  searchParams: Promise<{ stripe?: string | string[] }>;
+};
+
+export default async function AccountPage({ searchParams }: AccountPageProps) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
+  const stripeParam = (await searchParams).stripe;
+  const stripeResult =
+    stripeParam === "connected" ||
+    stripeParam === "cancelled" ||
+    stripeParam === "error"
+      ? stripeParam
+      : undefined;
   const { user } = viewer;
   return (
     <AccountShell title="Your account" description="Open the areas available to your account." viewer={viewer} wide>
@@ -15,7 +26,12 @@ export default async function AccountPage() {
         {viewer.tenant && <Link href="/settings">Open business settings</Link>}
         {user.platformAdmin && <Link href="/admin">Open platform administration</Link>}
       </nav>
-      {viewer.tenant && <BusinessSettingsPanel section="profile" />}
+      {viewer.tenant && (
+        <BusinessSettingsPanel
+          section="profile"
+          stripeResult={stripeResult}
+        />
+      )}
       {user.application && user.application.status !== "approved" && (
         <section className="account-section">
           <h2>Business application</h2>

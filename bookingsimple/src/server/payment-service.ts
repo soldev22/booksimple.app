@@ -309,6 +309,13 @@ export async function listBookingPayments(
   bookingId: string,
 ): Promise<PaymentView[]> {
   const context = await contextForRequest(request);
+  return getBookingPayments(context, bookingId);
+}
+
+export async function getBookingPayments(
+  context: TenantContext,
+  bookingId: string,
+): Promise<PaymentView[]> {
   await getBooking(context, bookingId);
   const payments = await queryBookingPayments(context.tenantId, bookingId);
   if (

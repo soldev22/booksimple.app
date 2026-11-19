@@ -30,10 +30,19 @@ function isCurrency(value: string): boolean {
   }
 }
 
+function isCountry(value: string): boolean {
+  return /^[A-Z]{2}$/.test(value);
+}
+
 const businessUpdateSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
     timezone: z.string().trim().min(1).max(100).refine(isTimeZone),
+    country: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .refine(isCountry),
     currency: z
       .string()
       .trim()

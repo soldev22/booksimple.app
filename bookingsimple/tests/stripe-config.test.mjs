@@ -13,19 +13,24 @@ test("Stripe configuration derives mode and enforces live HTTPS", () => {
     parseStripeConfig({
       STRIPE_SECRET_KEY: "sk_test_example",
       STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_1234567890123456",
+      STRIPE_CONNECT_CLIENT_ID: "ca_test_example",
       APP_ORIGIN: "http://localhost:3000",
     }),
     {
       secretKey: "sk_test_example",
       webhookSecret: "whsec_1234567890123456",
+      connectClientId: "ca_test_example",
       mode: "test",
       appOrigin: "http://localhost:3000",
+      oauthRedirectUri:
+        "http://localhost:3000/api/stripe/connect/oauth/callback",
     },
   );
   assert.throws(() =>
     parseStripeConfig({
       STRIPE_SECRET_KEY: "sk_live_example",
       STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_1234567890123456",
+      STRIPE_CONNECT_CLIENT_ID: "ca_live_example",
       APP_ORIGIN: "http://localhost:3000",
     }),
   );
@@ -33,6 +38,7 @@ test("Stripe configuration derives mode and enforces live HTTPS", () => {
     parseStripeConfig({
       STRIPE_SECRET_KEY: "not-a-secret-key",
       STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_1234567890123456",
+      STRIPE_CONNECT_CLIENT_ID: "ca_live_example",
       APP_ORIGIN: "https://example.com",
     }),
   );
@@ -44,11 +50,13 @@ test("Stripe webhook verification rejects tampering and accepts signed ignored e
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_CONNECT_WEBHOOK_SECRET:
       process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+    STRIPE_CONNECT_CLIENT_ID: process.env.STRIPE_CONNECT_CLIENT_ID,
   };
   process.env.APP_ORIGIN = "http://localhost:3000";
   process.env.STRIPE_SECRET_KEY = "sk_test_example";
   process.env.STRIPE_CONNECT_WEBHOOK_SECRET =
     "whsec_1234567890123456";
+  process.env.STRIPE_CONNECT_CLIENT_ID = "ca_test_example";
   try {
     const payload = JSON.stringify({
       id: "evt_test_signed",

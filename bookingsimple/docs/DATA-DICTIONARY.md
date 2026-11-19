@@ -49,7 +49,7 @@ will not copy this pattern automatically.
 | --- | --- | --- | --- | --- | --- |
 | `user` | Registered account and authorization state | Name, email, password hash, verification state, roles, optional company membership and application | Account holder; platform controls authorization | Active account lifetime; anonymized deletion tombstone for 1 year | Yes |
 | `email-index` | Enforces one active account per normalized email | Normalized email and user ID | Account system | Active account lifetime; deleted atomically when the account is anonymized | No |
-| `business` | Company tenant and basic profile | Name, status, member count, timezone, currency, default deposit percentage, default reminder rules and non-secret Stripe connected-account references | Company tenant | Company lifetime until an approved business-retention process exists | Yes |
+| `business` | Company tenant and basic profile | Name, status, member count, timezone, country, currency, default deposit percentage, default reminder rules and non-secret Stripe connected-account references | Company tenant | Company lifetime until an approved business-retention process exists | Yes |
 | `business-invitation` | Allows one email to join one company | Invitee email, staff role, status, inviter ID, hashed secret and expiry | Company tenant | Pending for 30 days; accepted or revoked for 90 days; link valid for 7 days | Yes, while pending |
 | `membership-reservation` | Prevents duplicate internal usernames and maintains member counts during cross-document updates | User ID, internal username, role and operation ID | Company tenant | Active for membership lifetime; released for 30 days | No |
 | `email-verification` | One-time email verification | User ID, hashed token, authorization version and expiry | Account holder | 24 hours | No |
@@ -110,17 +110,19 @@ Major business domains use dedicated containers rather than expanding
 
 ## Approved Stripe Connect Business Fields
 
-Each Business may store separate test and live Stripe Accounts v2 references:
+Each Business may store separate test and live Stripe Connect OAuth references:
 
 ```json
 {
   "stripeConnect": {
     "test": {
       "accountId": "acct_test_reference",
+      "connectionMethod": "OAUTH",
       "createdAt": "2026-11-17T19:10:00.000Z"
     },
     "live": {
       "accountId": "acct_live_reference",
+      "connectionMethod": "OAUTH",
       "createdAt": "2026-11-17T19:20:00.000Z"
     }
   }
@@ -129,11 +131,11 @@ Each Business may store separate test and live Stripe Accounts v2 references:
 
 - Connected-account IDs are provider references, not credentials.
 - Test and live references are separate so changing the platform key mode never
-  routes live money to a test account or reuses test onboarding in production.
-- Secret API keys, webhook signing secrets, account-link URLs and Checkout URLs
-  are never stored in Business documents.
-- Only company administrators can create an account or generate a single-use
-  hosted onboarding link.
+  routes live money to a test account or reuses a test authorization in
+  production.
+- Secret API keys, webhook signing secrets, OAuth access or refresh tokens,
+  authorization URLs and Checkout URLs are never stored in Business documents.
+- Only company administrators can start the single-use OAuth connection flow.
 - The current capability/readiness state is retrieved from Stripe and is not
   trusted solely from a stale local flag.
 

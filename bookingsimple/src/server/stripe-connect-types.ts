@@ -19,3 +19,7 @@ export type StripeOnboardingView = {
   url: string;
   mode: StripeMode;
 };
+
+export type StripeOAuthCompletion = {
+  outcome: "CONNECTED" | "CANCELLED";
+};

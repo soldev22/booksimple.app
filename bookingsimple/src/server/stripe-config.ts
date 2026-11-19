@@ -5,8 +5,10 @@ export type StripeMode = "test" | "live";
 export type StripeConfig = {
   secretKey: string;
   webhookSecret: string;
+  connectClientId: string;
   mode: StripeMode;
   appOrigin: string;
+  oauthRedirectUri: string;
 };
 
 export function parseStripeConfig(
@@ -15,6 +17,8 @@ export function parseStripeConfig(
   const secretKey = environment.STRIPE_SECRET_KEY?.trim() ?? "";
   const webhookSecret =
     environment.STRIPE_CONNECT_WEBHOOK_SECRET?.trim() ?? "";
+  const connectClientId =
+    environment.STRIPE_CONNECT_CLIENT_ID?.trim() ?? "";
   const mode = secretKey.startsWith("sk_live_")
     ? "live"
     : secretKey.startsWith("sk_test_")
@@ -28,6 +32,11 @@ export function parseStripeConfig(
   if (!/^whsec_[A-Za-z0-9_=-]{16,}$/.test(webhookSecret)) {
     throw new Error(
       "Stripe is not configured with a valid Connect webhook secret.",
+    );
+  }
+  if (!/^ca_[A-Za-z0-9_]+$/.test(connectClientId)) {
+    throw new Error(
+      "Stripe is not configured with a valid Connect OAuth client ID.",
     );
   }
   const originValue = environment.APP_ORIGIN?.trim() ?? "";
@@ -50,7 +59,14 @@ export function parseStripeConfig(
   ) {
     throw new Error("Live Stripe mode requires an HTTPS application origin.");
   }
-  return { secretKey, webhookSecret, mode, appOrigin };
+  return {
+    secretKey,
+    webhookSecret,
+    connectClientId,
+    mode,
+    appOrigin,
+    oauthRedirectUri: `${appOrigin}/api/stripe/connect/oauth/callback`,
+  };
 }
 
 export function stripeIsConfigured(): boolean {

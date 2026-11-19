@@ -2,6 +2,7 @@ import type { AuthDocument } from "./auth-storage";
 import type { BusinessReminderRule } from "./reminder-types";
 
 export const DEFAULT_BUSINESS_TIMEZONE = "Europe/London";
+export const DEFAULT_BUSINESS_COUNTRY = "GB";
 export const DEFAULT_BUSINESS_CURRENCY = "GBP";
 export const DEFAULT_DEPOSIT_PERCENTAGE = 0;
 
@@ -10,6 +11,7 @@ export type BusinessStatus = "pending" | "active" | "rejected" | "disabled";
 export type StripeConnectedAccountReference = {
   accountId: string;
   createdAt: string;
+  connectionMethod: "OAUTH";
 };
 
 export type StripeConnectReferences = {
@@ -23,6 +25,7 @@ export type BusinessDocument = AuthDocument & {
   status: BusinessStatus;
   memberCount: number;
   timezone?: string;
+  country?: string;
   currency?: string;
   defaultDepositPercentage?: number;
   reminderRules?: BusinessReminderRule[];
@@ -36,6 +39,7 @@ export type BusinessSettingsView = {
   name: string;
   status: BusinessStatus;
   timezone: string;
+  country: string;
   currency: string;
   defaultDepositPercentage: number;
   reminderRules: BusinessReminderRule[];

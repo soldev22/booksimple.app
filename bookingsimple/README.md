@@ -324,8 +324,14 @@ or deployment secret management, never in source control:
 PAYMENT_PROVIDER=STRIPE
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_CONNECT_WEBHOOK_SECRET=whsec_...
+STRIPE_CONNECT_CLIENT_ID=ca_...
 APP_ORIGIN=http://localhost:3000
 ```
+
+Configure these exact Stripe Connect OAuth redirect URIs:
+
+- local: `http://localhost:3000/api/stripe/connect/oauth/callback`
+- production: `<APP_ORIGIN>/api/stripe/connect/oauth/callback`
 
 Create a Connect webhook endpoint for
 `<APP_ORIGIN>/api/stripe/webhook`, configured to receive events from connected
@@ -336,7 +342,9 @@ displayed `whsec_...` secret rather than the Dashboard endpoint secret.
 
 Restart the application after changing the environment. A company
 administrator can then open Account, choose Business profile, and start
-Stripe-hosted onboarding. Test and live connected accounts are deliberately
+Stripe Connect OAuth lets a Business sign in and connect an existing Stripe
+account. BookSimple stores only the connected account ID, not OAuth access or
+refresh tokens. Test and live connected-account references are deliberately
 separate. Do not change to an `sk_live_...` key or enable production payments
 without explicit production approval and HTTPS `APP_ORIGIN`.
 

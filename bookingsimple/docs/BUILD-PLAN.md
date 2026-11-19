@@ -430,6 +430,7 @@ Initial fields may include:
 
 - business name
 - timezone
+- country
 - currency
 
 Do not add a large settings system.
@@ -440,6 +441,9 @@ Initial testing may use:
 
 Timezone:
 Europe/London
+
+Country:
+GB
 
 Currency:
 GBP
@@ -460,7 +464,7 @@ COMPLETE for the approved Stage 5 scope.
 
 The business settings page and APIs allow both company roles to view the active
 business profile while only company administrators can update its name,
-timezone and currency. Requests derive the tenant exclusively from the
+timezone, country and currency. Requests derive the tenant exclusively from the
 authenticated membership and reject unknown fields, including browser-supplied
 tenant identifiers.
 
@@ -1327,17 +1331,18 @@ Booking Confirmed
 
 Do not enable production payments without explicit approval.
 
-The approved provider is Stripe Connect Accounts v2. Each tenant onboards a
-separate Merchant account with the full Stripe Dashboard. Checkout uses direct
-charges, Stripe fee and loss collection, and no application fee. Separate test
-and live references prevent mode crossover. Signed connected-account Checkout
-webhooks, not browser redirects, are payment authority.
+The approved provider is Stripe Connect with OAuth connection of an existing
+full-Dashboard Stripe account. Checkout uses direct charges and no application
+fee. BookSimple stores only the connected account ID, never OAuth tokens.
+Separate test and live references prevent mode crossover. Signed
+connected-account Checkout webhooks, not browser redirects, are payment
+authority.
 
 Application implementation and deterministic tests are complete. A real
-test-mode connected-account onboarding and Checkout payment remain
-environment-gated until the platform secret key and Connect webhook signing
-secret are configured outside source control. Live mode is not approved by
-this implementation status.
+test-mode existing-account OAuth connection and Checkout payment remain
+environment-gated until the platform secret key, Connect client ID, exact OAuth
+redirect URI and Connect webhook signing secret are configured outside source
+control. Live mode is not approved by this implementation status.
 
 STOP after completion.
 

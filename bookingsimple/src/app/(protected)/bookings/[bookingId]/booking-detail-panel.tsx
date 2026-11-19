@@ -53,13 +53,15 @@ function statusLabel(status: BookingStatus): string {
 
 export function BookingDetailPanel({
   initialBooking,
+  initialPayments,
 }: {
   initialBooking: BookingView;
+  initialPayments: PaymentView[];
 }) {
   const [booking, setBooking] = useState(initialBooking);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [services, setServices] = useState<ServiceView[]>([]);
-  const [payments, setPayments] = useState<PaymentView[]>([]);
+  const [payments, setPayments] = useState(initialPayments);
   const [reminders, setReminders] = useState<ReminderView[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

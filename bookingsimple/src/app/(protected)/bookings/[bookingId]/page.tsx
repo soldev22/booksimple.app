@@ -4,6 +4,7 @@ import { getViewer } from "@/server/auth";
 import { StorageError } from "@/server/auth-storage";
 import { getBooking } from "@/server/booking-service";
 import { parseBookingId } from "@/server/booking-validation";
+import { getBookingPayments } from "@/server/payment-service";
 import { BookingDetailPanel } from "./booking-detail-panel";
 
 export default async function BookingDetailPage({
@@ -21,8 +22,10 @@ export default async function BookingDetailPage({
     notFound();
   }
   let booking;
+  let payments;
   try {
     booking = await getBooking(viewer.tenant, bookingId);
+    payments = await getBookingPayments(viewer.tenant, bookingId);
   } catch (error) {
     if (error instanceof StorageError && error.status === 404) notFound();
     throw error;
@@ -34,7 +37,10 @@ export default async function BookingDetailPage({
       viewer={viewer}
       wide
     >
-      <BookingDetailPanel initialBooking={booking} />
+      <BookingDetailPanel
+        initialBooking={booking}
+        initialPayments={payments}
+      />
     </AccountShell>
   );
 }

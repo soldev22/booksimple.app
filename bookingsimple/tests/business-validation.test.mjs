@@ -12,6 +12,7 @@ test("business settings accept explicit valid values", () => {
     parseBusinessUpdateInput({
       name: "Example Business",
       timezone: "Europe/London",
+      country: "gb",
       currency: "gbp",
       defaultDepositPercentage: "25",
       reminderRules: JSON.stringify([
@@ -22,6 +23,7 @@ test("business settings accept explicit valid values", () => {
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 25,
       reminderRules: [
@@ -45,18 +47,28 @@ test("business settings reject invalid or browser-supplied tenant data", () => {
     {
       name: "Example Business",
       timezone: "Not/A_Timezone",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 25,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "INVALID",
       defaultDepositPercentage: 25,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GBR",
+      currency: "GBP",
+      defaultDepositPercentage: 25,
+    },
+    {
+      name: "Example Business",
+      timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 25,
       tenantId: "22222222-2222-4222-8222-222222222222",
@@ -64,18 +76,21 @@ test("business settings reject invalid or browser-supplied tenant data", () => {
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: -1,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 101,
     },
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 25,
       reminderRules: [
@@ -86,6 +101,7 @@ test("business settings reject invalid or browser-supplied tenant data", () => {
     {
       name: "Example Business",
       timezone: "Europe/London",
+      country: "GB",
       currency: "GBP",
       defaultDepositPercentage: 25,
       reminderRules: [

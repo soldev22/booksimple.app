@@ -51,6 +51,7 @@ import {
 } from "./auth-notifications";
 import { acceptedTotpStep, createTotp } from "./auth-totp";
 import {
+  DEFAULT_BUSINESS_COUNTRY,
   DEFAULT_BUSINESS_CURRENCY,
   DEFAULT_BUSINESS_TIMEZONE,
   type BusinessDocument,
@@ -467,6 +468,7 @@ async function createRegistration(
       status: "pending",
       memberCount: 0,
       timezone: DEFAULT_BUSINESS_TIMEZONE,
+      country: DEFAULT_BUSINESS_COUNTRY,
       currency: DEFAULT_BUSINESS_CURRENCY,
       defaultDepositPercentage: 0,
       reminderRules: [],
