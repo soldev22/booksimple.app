@@ -1503,7 +1503,7 @@ Production configuration evidence:
   secret,
 - the replacement Twilio Auth Token was promoted to primary and the exposed
   token was retired,
-- Vercel Production deployment `6Zp5bsseudX9HSmnzYiDegpzDFX7` completed as
+- Vercel Production deployment `DCNb17et5LhMZAevrGc8TBYby6DE` completed as
   Ready and was assigned to `https://www.booksimple.app`,
 - the Twilio number persists
   `https://www.booksimple.app/api/webhooks/twilio/sms` as its incoming-message
