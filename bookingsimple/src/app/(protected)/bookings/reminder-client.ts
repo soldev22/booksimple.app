@@ -25,7 +25,7 @@ function isReminder(value: unknown): value is ReminderView {
     "status" in value &&
     REMINDER_STATUSES.includes(value.status as ReminderStatus) &&
     "provider" in value &&
-    value.provider === "MOCK_TEST" &&
+    (value.provider === "MOCK_TEST" || value.provider === "POSTMARK") &&
     "attemptCount" in value &&
     typeof value.attemptCount === "number" &&
     Number.isSafeInteger(value.attemptCount) &&

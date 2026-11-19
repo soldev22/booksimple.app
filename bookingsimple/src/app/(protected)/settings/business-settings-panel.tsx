@@ -445,8 +445,9 @@ export function BusinessSettingsPanel({
               <fieldset className="account-field">
                 <legend>Default booking reminders</legend>
                 <small>
-                  New Bookings snapshot these rules. Delivery is simulated in
-                  Stage 12 and no customer message is sent.
+                  New Bookings snapshot these rules. Email reminders are sent
+                  automatically; other channels remain pending provider
+                  support.
                 </small>
                 {reminderRules.map((rule, index) => (
                   <div className="booking-status-actions" key={rule.id}>

@@ -12,6 +12,7 @@ import {
   reminderMessageId,
 } from "../src/server/reminder-delivery.ts";
 import { isAuthorizedReminderCron } from "../src/server/reminder-cron.ts";
+import { parseReminderList } from "../src/app/(protected)/bookings/reminder-client.ts";
 
 const bookingId = "11111111-1111-4111-8111-111111111111";
 
@@ -106,4 +107,22 @@ test("Unavailable reminder channels fail explicitly before provider work", async
     ),
     (error) => error?.code === "UNSUPPORTED_CHANNEL",
   );
+});
+
+test("Reminder list accepts real Postmark delivery results", () => {
+  const reminder = {
+    id: `reminder-${bookingId}-email-5`,
+    bookingId,
+    channel: "EMAIL",
+    offsetMinutes: 5,
+    scheduledFor: "2026-11-19T19:05:00.000Z",
+    status: "SENT",
+    provider: "POSTMARK",
+    attemptCount: 1,
+    sentAt: "2026-11-19T19:18:40.000Z",
+    createdAt: "2026-11-19T19:00:00.000Z",
+    updatedAt: "2026-11-19T19:18:40.000Z",
+  };
+
+  assert.deepEqual(parseReminderList({ reminders: [reminder] }), [reminder]);
 });

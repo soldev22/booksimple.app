@@ -404,8 +404,8 @@ export function BookingDetailPanel({
       <section className="account-section">
         <h2>Booking reminders</h2>
         <p>
-          Reminder delivery is simulated in Stage 12. No customer message is
-          sent through the selected channel.
+          Email reminders are sent automatically. Other channels remain
+          pending provider support.
         </p>
         {reminders.length === 0 ? (
           <p>
