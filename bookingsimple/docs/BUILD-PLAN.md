@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: IN PROGRESS — TWILIO SMS PRODUCTION CONFIGURED; LIVE CARRIER VALIDATION PENDING
+Status: COMPLETE — TWILIO SMS LIVE TWO-WAY VERIFIED
 
 ## Objective
 
@@ -1527,9 +1527,18 @@ contact normalization but cannot be sent by Twilio. New SMS Conversations now
 require an international E.164 address with a leading `+` and country code,
 and the Inbox explains that format before submission.
 
-Production completion remains pending until a real carrier-delivered incoming
-SMS and an outgoing Inbox reply are proven with persisted Message evidence. Do
-not begin another channel before that validation.
+Live carrier validation is complete:
+
+- a real inbound carrier SMS was authenticated, tenant-routed and persisted as
+  `INBOUND` / `RECEIVED` with provider `TWILIO` and provider correlation IDs,
+- an outgoing reply in the same SMS Conversation was accepted by Twilio,
+  delivered to the carrier recipient and persisted as `OUTBOUND` / `SENT` with
+  its Twilio Message SID, and
+- the earlier invalid-number attempts remain visible as `FAILED` without
+  creating false Twilio delivery evidence.
+
+The Twilio SMS increment is complete. Stop before adding WhatsApp or
+Facebook / Meta as a separate future channel increment.
 
 ---
 
