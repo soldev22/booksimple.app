@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: IN PROGRESS — TWILIO SMS CODE COMPLETE; LIVE PROVIDER VALIDATION PENDING
+Status: IN PROGRESS — TWILIO SMS PRODUCTION CONFIGURED; LIVE CARRIER VALIDATION PENDING
 
 ## Objective
 
@@ -1497,10 +1497,23 @@ Implemented:
   normalization and ambiguous configuration, and an environment-backed
   integration test covers persistence, retries and tenant isolation.
 
-Production completion remains pending until a real Twilio account and SMS
-number are configured, the webhook is registered, and both incoming and
-outgoing SMS are proven with persisted Message evidence. Do not begin another
-channel before that validation.
+Production configuration evidence:
+
+- the tenant-scoped Twilio route is stored as a masked Vercel Production
+  secret,
+- the replacement Twilio Auth Token was promoted to primary and the exposed
+  token was retired,
+- Vercel Production deployment `WRZc5kdU77WQGixQJ1CXvCPsF7MP` completed as
+  Ready and was assigned to `https://www.booksimple.app`,
+- the Twilio number persists
+  `https://www.booksimple.app/api/webhooks/twilio/sms` as its incoming-message
+  HTTP POST webhook after a page reload, and
+- an unsigned production webhook probe returns `401` with safe empty TwiML,
+  proving the deployed route is present, configured and fail-closed.
+
+Production completion remains pending until a real carrier-delivered incoming
+SMS and an outgoing Inbox reply are proven with persisted Message evidence. Do
+not begin another channel before that validation.
 
 ---
 
