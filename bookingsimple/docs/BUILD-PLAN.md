@@ -1387,7 +1387,7 @@ STOP after completion.
 
 # STAGE 17 — Real Reminder Delivery
 
-Status: IMPLEMENTED; DEPLOYED CRON AND CONTROLLED POSTMARK VALIDATION PENDING
+Status: COMPLETE
 
 ## Objective
 
@@ -1432,6 +1432,13 @@ fails closed and the secret is never logged. SMS, WhatsApp and Meta rules
 record explicit retryable `UNSUPPORTED_CHANNEL` failures until their provider
 adapters are connected. Provider and routing failures remain visible on the
 Reminder and use the existing bounded retry schedule.
+
+Production validation on `www.booksimple.app` confirmed that the secured Cron
+processes overdue Email reminders without an active browser, Postmark delivers
+them, and each configured rule retains its own persisted `SENT` result. The
+controlled Booking had distinct 1,440-minute and 5-minute rules; both appeared
+as Sent after delivery, retained an attempt count of one, and were not
+reprocessed by later Cron cycles.
 
 STOP after completion.
 
