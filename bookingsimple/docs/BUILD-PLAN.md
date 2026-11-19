@@ -1627,6 +1627,14 @@ the callback URL, then connect one approved Facebook Page, subscribe it to
 same tenant Conversation, and confirm duplicate delivery remains idempotent.
 Stop after that proof.
 
+Production deployment `dpl_8hPLuLoDJXTcWX2eQMQmjhKChzAg` completed as Ready
+and was assigned to `https://www.booksimple.app`. Before any Meta route secret
+was configured, both the webhook verification GET and signed-event POST
+endpoints returned safe empty `503` responses, proving the deployed boundary is
+present and fails closed. Live setup is paused at Meta's developer-account
+registration because creating that account requires the account owner to accept
+the Meta Platform Terms and Developer Policies explicitly.
+
 ---
 
 # STAGE 19 — Operational Dashboard
