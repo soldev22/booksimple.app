@@ -51,7 +51,20 @@ function postmarkFromAddress(): string {
       503,
     );
   }
+
   return value;
+}
+
+function postmarkReplyAddress(value: string | undefined): string {
+  const parsed = z.email().max(254).safeParse(value);
+  if (!parsed.success) {
+    throw new MessagingProviderError(
+      "The Postmark message is invalid.",
+      "PAYLOAD",
+      400,
+    );
+  }
+  return parsed.data;
 }
 
 function decodeBasicCredentials(
@@ -145,7 +158,7 @@ export const postmarkMessagingProvider: MessagingProviderAdapter = {
         body: JSON.stringify({
           From: postmarkFromAddress(),
           To: message.recipientAddress,
-          ReplyTo: message.replyAddress,
+          ReplyTo: postmarkReplyAddress(message.replyAddress),
           Subject: message.subject,
           TextBody: message.body,
           MessageStream:

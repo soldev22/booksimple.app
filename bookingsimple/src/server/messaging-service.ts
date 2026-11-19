@@ -12,6 +12,7 @@ import {
 } from "./messaging-provider";
 import { mockMessagingProvider } from "./mock-messaging-provider";
 import { postmarkMessagingProvider } from "./postmark-messaging-provider";
+import { twilioSmsMessagingProvider } from "./twilio-sms-messaging-provider";
 
 const outboundMessageSchema = z
   .object({
@@ -21,7 +22,7 @@ const outboundMessageSchema = z
     channel: z.enum(COMMUNICATION_CHANNELS),
     recipientAddress: z.string().trim().min(1).max(254),
     subject: z.string().trim().min(1).max(200),
-    replyAddress: z.email().max(254),
+    replyAddress: z.email().max(254).optional(),
     body: z.string().trim().min(1).max(4_000),
     requestedAt: z.iso.datetime({ offset: true }),
   })
@@ -29,7 +30,7 @@ const outboundMessageSchema = z
 
 const messageReceiptSchema = z
   .object({
-    provider: z.enum(["MOCK_TEST", "POSTMARK"]),
+    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO"]),
     externalMessageId: z.string().trim().min(1).max(200),
     status: z.literal("ACCEPTED"),
     acceptedAt: z.iso.datetime({ offset: true }),
@@ -38,7 +39,8 @@ const messageReceiptSchema = z
 
 const normalizedIncomingSchema = z
   .object({
-    provider: z.enum(["MOCK_TEST", "POSTMARK"]),
+    provider: z.enum(["MOCK_TEST", "POSTMARK", "TWILIO"]),
+    tenantId: z.uuid().optional(),
     providerEventId: z.string().trim().min(1).max(200),
     externalMessageId: z.string().trim().min(1).max(200),
     channel: z.enum(COMMUNICATION_CHANNELS),
@@ -56,6 +58,15 @@ export function configuredMessagingProvider(): MessagingProviderAdapter {
   if (configured === "MOCK_TEST") return mockMessagingProvider;
   if (configured === "POSTMARK") return postmarkMessagingProvider;
   throw new Error("The messaging provider configuration is invalid.");
+}
+
+export function messagingProviderForChannel(
+  channel: (typeof COMMUNICATION_CHANNELS)[number],
+): MessagingProviderAdapter {
+  const configured = configuredMessagingProvider();
+  if (configured.simulated) return configured;
+  if (channel === "SMS") return twilioSmsMessagingProvider;
+  return configured;
 }
 
 export async function sendProviderMessage(

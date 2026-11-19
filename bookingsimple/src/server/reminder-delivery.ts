@@ -98,7 +98,10 @@ export async function deliverReminder(
     );
   }
   const provider = configuredMessagingProvider();
-  if (!provider.supportedChannels.includes("EMAIL")) {
+  if (
+    provider.provider === "TWILIO" ||
+    !provider.supportedChannels.includes("EMAIL")
+  ) {
     throw new ReminderDeliveryError(
       "Email reminder delivery is not configured.",
       "UNSUPPORTED_CHANNEL",

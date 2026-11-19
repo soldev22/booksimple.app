@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { mockMessagingProvider } from "../src/server/mock-messaging-provider.ts";
 import {
   parseProviderWebhook,
@@ -10,10 +10,32 @@ import {
   postmarkInboundReplyAddress,
   postmarkMessagingProvider,
 } from "../src/server/postmark-messaging-provider.ts";
+import { twilioSmsMessagingProvider } from "../src/server/twilio-sms-messaging-provider.ts";
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
 const messageId = "33333333-3333-4333-8333-333333333333";
+const twilioAccountSid = `AC${"1".repeat(32)}`;
+const twilioAuthToken = "test-twilio-auth-token";
+const twilioFromNumber = "+447700900999";
+
+function configureTwilioRoutes(routes) {
+  process.env.TWILIO_SMS_ROUTES = JSON.stringify(routes);
+  process.env.APP_ORIGIN = "https://booksimple.app";
+}
+
+function twilioSignature(url, rawBody) {
+  const parameters = Array.from(new URLSearchParams(rawBody).entries()).sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
+  const value = parameters.reduce(
+    (result, [name, parameter]) => `${result}${name}${parameter}`,
+    url,
+  );
+  return createHmac("sha1", twilioAuthToken)
+    .update(value)
+    .digest("base64");
+}
 
 test("mock provider sends normalized outbound messages idempotently", async () => {
   const input = {
@@ -256,4 +278,185 @@ test("Postmark reply addresses use an opaque MailboxHash route", () => {
     `ca9ceb66cfef778ea61ebe6a86e5f2da+${"a".repeat(43)}@inbound.postmarkapp.com`,
   );
   assert.throws(() => postmarkInboundReplyAddress("tenant-guid"));
+});
+
+test("Twilio provider maps tenant-routed SMS sends and validates the receipt", async () => {
+  const previousFetch = globalThis.fetch;
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  let request;
+  globalThis.fetch = async (input, init) => {
+    request = { input, init };
+    return Response.json({
+      sid: `SM${"2".repeat(32)}`,
+      status: "queued",
+    });
+  };
+  try {
+    const receipt = await sendProviderMessage(twilioSmsMessagingProvider, {
+      tenantId,
+      conversationId,
+      messageId,
+      channel: "SMS",
+      recipientAddress: "+447700900123",
+      subject: "Ignored for SMS",
+      body: "Can we confirm your booking?",
+      requestedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.equal(
+      request.input,
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+    );
+    assert.equal(
+      request.init.headers.Authorization,
+      `Basic ${Buffer.from(
+        `${twilioAccountSid}:${twilioAuthToken}`,
+      ).toString("base64")}`,
+    );
+    assert.deepEqual(
+      Object.fromEntries(new URLSearchParams(request.init.body)),
+      {
+        Body: "Can we confirm your booking?",
+        From: twilioFromNumber,
+        To: "+447700900123",
+      },
+    );
+    assert.equal(receipt.provider, "TWILIO");
+    assert.equal(receipt.externalMessageId, `SM${"2".repeat(32)}`);
+    assert.equal(receipt.status, "ACCEPTED");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Twilio provider rejects failures without exposing provider response content", async () => {
+  const previousFetch = globalThis.fetch;
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        code: 21211,
+        message: "The 'To' number is not a valid phone number.",
+      },
+      { status: 400 },
+    );
+  try {
+    await assert.rejects(
+      () =>
+        sendProviderMessage(twilioSmsMessagingProvider, {
+          tenantId,
+          conversationId,
+          messageId,
+          channel: "SMS",
+          recipientAddress: "+447700900123",
+          subject: "Ignored",
+          body: "Hello",
+          requestedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      (error) =>
+        error?.category === "PROVIDER" &&
+        error?.providerStatus === 400 &&
+        error?.providerCode === 21211 &&
+        !error.message.includes("valid phone number"),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Twilio provider authenticates and tenant-routes inbound SMS", async () => {
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+  ]);
+  const rawBody = new URLSearchParams({
+    AccountSid: twilioAccountSid,
+    Body: "Can I move my booking?",
+    From: "+447700900123",
+    MessageSid: `SM${"3".repeat(32)}`,
+    To: twilioFromNumber,
+  }).toString();
+  const url = "https://booksimple.app/api/webhooks/twilio/sms";
+  const signature = twilioSignature(url, rawBody);
+  const messages = await parseProviderWebhook(twilioSmsMessagingProvider, {
+    rawBody,
+    headers: { "x-twilio-signature": signature },
+    url,
+  });
+  assert.equal(messages.length, 1);
+  assert.deepEqual(
+    {
+      ...messages[0],
+      receivedAt: undefined,
+    },
+    {
+      provider: "TWILIO",
+      tenantId,
+      providerEventId: `SM${"3".repeat(32)}`,
+      externalMessageId: `SM${"3".repeat(32)}`,
+      channel: "SMS",
+      senderAddress: "+447700900123",
+      recipientAddress: twilioFromNumber,
+      providerRouteKey: twilioFromNumber,
+      body: "Can I move my booking?",
+      receivedAt: undefined,
+    },
+  );
+  assert.match(messages[0].receivedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+  await assert.rejects(() =>
+    parseProviderWebhook(twilioSmsMessagingProvider, {
+      rawBody,
+      headers: { "x-twilio-signature": "invalid" },
+      url,
+    }),
+  );
+});
+
+test("Twilio route configuration rejects tenant and destination ambiguity", async () => {
+  configureTwilioRoutes([
+    {
+      tenantId,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
+      fromNumber: twilioFromNumber,
+    },
+    {
+      tenantId,
+      accountSid: `AC${"4".repeat(32)}`,
+      authToken: "other-token",
+      fromNumber: "+447700900998",
+    },
+  ]);
+  await assert.rejects(
+    () =>
+      sendProviderMessage(twilioSmsMessagingProvider, {
+        tenantId,
+        conversationId,
+        messageId,
+        channel: "SMS",
+        recipientAddress: "+447700900123",
+        subject: "Ignored",
+        body: "Hello",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    (error) => error?.category === "CONFIGURATION",
+  );
 });

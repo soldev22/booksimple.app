@@ -373,7 +373,7 @@ completed, cancelled or no-show Bookings. Email delivery is linked to the
 Customer Conversation and Message. SMS, WhatsApp and Meta rules remain
 retryable failures until those provider adapters are connected.
 
-### Email messaging
+### Email and SMS messaging
 
 Stage 13 defines the provider-neutral server boundary for outbound sends,
 webhook authenticity checks and inbound-message normalization. Provider
@@ -401,8 +401,25 @@ Postmark retries reuse a deterministic Message ID and do not duplicate Inbox
 messages. Raw payloads, message content and credentials are not written to
 logs.
 
-`MOCK_TEST` remains available for local-only development. SMS, WhatsApp and
-Facebook / Meta are not connected in Stage 14.
+Stage 18 adds Twilio as the first real SMS provider without replacing Postmark.
+Set `TWILIO_SMS_ROUTES` to the bounded server-side JSON route list documented
+in `.env.example`. Each tenant may have one route, and each Account SID plus
+Twilio destination number may map to only one tenant. Configure the Twilio
+number's incoming-message webhook to POST to:
+
+```text
+https://www.booksimple.app/api/webhooks/twilio/sms
+```
+
+Twilio requests are authenticated with `X-Twilio-Signature` against the
+canonical `APP_ORIGIN` URL and the route's Auth Token. Only after authentication
+does the adapter resolve `AccountSid` plus `To` to a tenant; the sender phone
+identity is then point-read inside that tenant partition. Twilio Message SIDs
+make webhook retries idempotent. Outbound SMS uses the tenant's configured
+number and retains the Twilio Message SID.
+
+`MOCK_TEST` remains available for local-only development. WhatsApp and
+Facebook / Meta are not connected.
 
 ### Booking confirmations
 

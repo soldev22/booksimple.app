@@ -45,7 +45,7 @@ import type { TenantContext } from "./auth-types";
 import { getRequestViewer } from "./auth";
 import { requireTenantContext } from "./tenant-context";
 import {
-  configuredMessagingProvider,
+  messagingProviderForChannel,
   sendProviderMessage,
 } from "./messaging-service";
 import {
@@ -767,7 +767,10 @@ export async function addConversationMessageForContext(
   );
   if (existing) return existing;
 
-  const provider = configuredMessagingProvider();
+  const storedConversation = await requiredConversation(context, conversationId);
+  const provider = messagingProviderForChannel(
+    storedConversation.document.channel,
+  );
   if (provider.simulated) {
     return appendMessageForContext(context, conversationId, {
       id: input.requestId,
@@ -777,10 +780,11 @@ export async function addConversationMessageForContext(
     });
   }
 
-  const storedConversation = await requiredConversation(context, conversationId);
-  if (storedConversation.document.channel !== "EMAIL") {
+  if (
+    !provider.supportedChannels.includes(storedConversation.document.channel)
+  ) {
     throw new StorageError(
-      "The configured messaging provider supports Email Conversations only.",
+      `The configured messaging provider does not support ${storedConversation.document.channel} Conversations.`,
       409,
     );
   }
@@ -789,7 +793,10 @@ export async function addConversationMessageForContext(
     storedConversation.document.channelIdentityId,
     conversationId,
   );
-  const routedIdentity = await ensureInboundRoute(context, identity);
+  const routedIdentity =
+    storedConversation.document.channel === "EMAIL"
+      ? await ensureInboundRoute(context, identity)
+      : identity;
   const pending = await appendMessageForContext(context, conversationId, {
     id: input.requestId,
     body: input.body,
@@ -813,12 +820,15 @@ export async function addConversationMessageForContext(
       tenantId: context.tenantId,
       conversationId,
       messageId: input.requestId,
-      channel: "EMAIL",
+      channel: storedConversation.document.channel,
       recipientAddress: routedIdentity.document.normalizedAddress,
       subject: `Message from ${context.businessName}`.slice(0, 200),
-      replyAddress: postmarkInboundReplyAddress(
-        routedIdentity.document.inboundRouteKey!,
-      ),
+      replyAddress:
+        storedConversation.document.channel === "EMAIL"
+          ? postmarkInboundReplyAddress(
+              routedIdentity.document.inboundRouteKey!,
+            )
+          : undefined,
       body: input.body,
       requestedAt: storedMessage.document.createdAt,
     });
@@ -847,7 +857,7 @@ export async function addConversationMessageForContext(
     }
     logOutboundFailure(context, conversationId, input.requestId, error);
     throw new StorageError(
-      "The Email could not be sent. The failed attempt remains visible in the Conversation.",
+      "The message could not be sent. The failed attempt remains visible in the Conversation.",
       502,
     );
   }
@@ -876,7 +886,7 @@ export async function addConversationMessageForContext(
       }),
     );
     throw new StorageError(
-      "The Email provider accepted the message, but its status could not be reconciled.",
+      "The messaging provider accepted the message, but its status could not be reconciled.",
       503,
     );
   }
@@ -977,38 +987,61 @@ export type IncomingMessageOutcome = {
 export async function processIncomingProviderMessage(
   incoming: NormalizedIncomingMessage,
 ): Promise<IncomingMessageOutcome> {
-  const identities = await queryChannelIdentitiesByInboundRoute(
-    incoming.providerRouteKey,
-  );
   const routeDigest = createHash("sha256")
     .update(incoming.providerRouteKey)
     .digest("hex");
-  if (identities.length === 0) {
+  let identity: ChannelIdentityDocument | undefined;
+  if (incoming.tenantId) {
+    const stored = await readChannelIdentity(
+      channelIdentityId(incoming.channel, incoming.senderAddress),
+      incoming.tenantId,
+    );
+    identity = stored?.document;
+  } else {
+    const identities = await queryChannelIdentitiesByInboundRoute(
+      incoming.providerRouteKey,
+    );
+    if (identities.length !== 1) {
+      if (identities.length === 0) {
+        console.warn(
+          JSON.stringify({
+            event: "conversation-inbound-route-not-found",
+            provider: incoming.provider,
+            routeDigest,
+          }),
+        );
+        return { status: "IGNORED" };
+      }
+      console.error(
+        JSON.stringify({
+          event: "conversation-inbound-route-ambiguous",
+          provider: incoming.provider,
+          routeDigest,
+        }),
+      );
+      throw new StorageError("The inbound Conversation route is ambiguous.", 503);
+    }
+    identity = identities[0];
+  }
+  if (!identity) {
     console.warn(
       JSON.stringify({
-        event: "conversation-inbound-route-not-found",
+        event: "conversation-inbound-identity-not-found",
         provider: incoming.provider,
+        tenantId: incoming.tenantId,
         routeDigest,
       }),
     );
     return { status: "IGNORED" };
   }
-  if (identities.length !== 1) {
-    console.error(
-      JSON.stringify({
-        event: "conversation-inbound-route-ambiguous",
-        provider: incoming.provider,
-        routeDigest,
-      }),
-    );
-    throw new StorageError("The inbound Conversation route is ambiguous.", 503);
-  }
-  const identity = identities[0];
   if (
     identity.type !== "channel-identity" ||
     identity.schemaVersion !== CONVERSATION_SCHEMA_VERSION ||
+    (incoming.tenantId !== undefined &&
+      identity.tenantId !== incoming.tenantId) ||
     identity.channel !== incoming.channel ||
-    identity.inboundRouteKey !== incoming.providerRouteKey
+    (incoming.tenantId === undefined &&
+      identity.inboundRouteKey !== incoming.providerRouteKey)
   ) {
     throw new StorageError("Channel identity data is invalid.", 503);
   }

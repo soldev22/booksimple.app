@@ -1,6 +1,6 @@
 import type { CommunicationChannel } from "./conversation-types";
 
-export type MessagingProviderName = "MOCK_TEST" | "POSTMARK";
+export type MessagingProviderName = "MOCK_TEST" | "POSTMARK" | "TWILIO";
 export type ProviderMessageStatus = "ACCEPTED";
 export type MessagingProviderErrorCategory =
   | "AUTHENTICATION"
@@ -25,6 +25,7 @@ export class MessagingProviderError extends Error {
 export type ProviderWebhookRequest = {
   rawBody: string;
   headers: Readonly<Record<string, string>>;
+  url?: string;
 };
 
 export type OutboundProviderMessage = {
@@ -34,7 +35,7 @@ export type OutboundProviderMessage = {
   channel: CommunicationChannel;
   recipientAddress: string;
   subject: string;
-  replyAddress: string;
+  replyAddress?: string;
   body: string;
   requestedAt: string;
 };
@@ -48,6 +49,7 @@ export type ProviderMessageReceipt = {
 
 export type NormalizedIncomingMessage = {
   provider: MessagingProviderName;
+  tenantId?: string;
   providerEventId: string;
   externalMessageId: string;
   channel: CommunicationChannel;

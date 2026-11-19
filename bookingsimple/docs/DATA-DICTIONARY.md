@@ -72,7 +72,11 @@ sent time and safe failure category. These values support delivery correlation,
 visible failure handling and idempotency; raw provider webhook payloads and
 credentials are not stored in Message documents. Email Channel Identity
 records may retain a random opaque inbound route key. It identifies no tenant
-or Conversation without a server-side lookup.
+or Conversation without a server-side lookup. SMS Channel Identity records use
+the same tenant-partitioned deterministic identity ID as the other normalized
+channels. Twilio Account SID and destination-number routing is server
+configuration rather than tenant-owned Conversation data; Twilio Auth Tokens
+are never persisted in this domain.
 
 ## Retention Rules
 

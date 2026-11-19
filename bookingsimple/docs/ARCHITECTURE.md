@@ -904,9 +904,25 @@ browser retry from sending twice. Message state moves from `PENDING` to `SENT`
 when Postmark accepts the request or to `FAILED` with a safe failure category;
 Postmark acceptance is not represented as final delivery.
 
-`MOCK_TEST` remains available for local-only development. SMS, WhatsApp and
-Facebook / Meta adapters are deferred. Attachments and Postmark delivery or
-bounce webhooks are outside Stage 14.
+Stage 18 adds the Twilio SMS adapter while retaining Postmark for Email.
+Outgoing provider selection is channel-aware: local `MOCK_TEST` still handles
+all channels, Postmark handles real Email, and Twilio handles real SMS. Twilio
+routes are a bounded server-side configuration keyed by tenant. Configuration
+rejects duplicate tenants and duplicate Account SID plus destination-number
+routes.
+
+Incoming Twilio form payloads remain inside the adapter. The adapter verifies
+`X-Twilio-Signature` using the route Auth Token and the canonical `APP_ORIGIN`
+webhook URL before it returns a normalized message or resolved tenant. An
+authenticated `AccountSid` plus `To` number must resolve to exactly one tenant.
+The normalized sender phone identity is then point-read only in that tenant
+partition; no provider-supplied or browser-supplied tenant identifier is
+trusted. Twilio Message SIDs produce deterministic Message IDs for retry
+idempotency, and outgoing request IDs retain the existing send-once boundary.
+
+`MOCK_TEST` remains available for local-only development. WhatsApp and
+Facebook / Meta adapters remain deferred. Attachments and Postmark/Twilio
+delivery status webhooks are outside this increment.
 
 ---
 

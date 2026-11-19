@@ -1446,6 +1446,8 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
+Status: IN PROGRESS — TWILIO SMS CODE COMPLETE; LIVE PROVIDER VALIDATION PENDING
+
 ## Objective
 
 Expand the unified inbox after the first provider architecture is proven.
@@ -1472,6 +1474,33 @@ For each channel:
 9. STOP before adding another channel.
 
 Do not duplicate core conversation logic for each provider.
+
+## SMS Increment
+
+The first Stage 18 increment adds Twilio SMS only. Postmark remains the Email
+provider; WhatsApp and Facebook / Meta remain deferred.
+
+Implemented:
+
+- channel-aware provider selection preserves local `MOCK_TEST`, routes real
+  Email to Postmark and routes real SMS to Twilio,
+- bounded server-side tenant routes reject duplicate tenants and duplicate
+  Account SID plus destination-number mappings,
+- outgoing Inbox SMS uses the tenant route, retains the Twilio Message SID and
+  preserves request-ID send idempotency and visible failure state,
+- the Twilio form webhook is size-bounded, signature-authenticated against the
+  canonical application origin and normalized inside the adapter,
+- authenticated `AccountSid` plus `To` resolves the tenant before a
+  deterministic sender identity is point-read in that tenant partition,
+- Twilio Message SID retries produce one stored Message,
+- focused provider tests cover sends, safe provider failures, authentication,
+  normalization and ambiguous configuration, and an environment-backed
+  integration test covers persistence, retries and tenant isolation.
+
+Production completion remains pending until a real Twilio account and SMS
+number are configured, the webhook is registered, and both incoming and
+outgoing SMS are proven with persisted Message evidence. Do not begin another
+channel before that validation.
 
 ---
 
