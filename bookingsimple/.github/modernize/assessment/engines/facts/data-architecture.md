@@ -164,6 +164,7 @@ erDiagram
         string channel
         string normalizedAddress
         string displayLabel
+        string inboundRouteKey
         string updatedAt
     }
     Conversation {
@@ -189,6 +190,9 @@ erDiagram
         string messagingProvider
         string externalMessageId
         string providerEventId
+        string failureCategory
+        string providerAttemptedAt
+        string sentAt
         string createdAt
     }
     Booking {
@@ -313,6 +317,10 @@ key for point reads, scoped queries and transactional batches.
 `channel-identities` uses `/tenantId` and a deterministic channel-address ID
 for exact point matching. Customer references are hydrated and authorized by
 the service layer; cross-container linking uses ETags and compensating rollback.
+Postmark Email adds a random opaque route key to an identity only when needed.
+Inbound webhooks query that key, then verify the exact normalized sender and
+tenant-owned Conversation before a deterministic provider Message ID is
+created.
 
 The `bookings` container uses `/tenantId`. Customer, Service and optional
 Conversation references are checked with tenant-scoped point reads. UTC
@@ -349,9 +357,9 @@ recording mock delivery.
 | DeletedUserTombstone | Former user ID and timestamps | Pseudonymous identifier | Name and email removed; one-year TTL |
 | Customer | Name, email and phone | PII | Server-resolved tenant partition, archive, admin-only anonymization and no PCI or PHI |
 | Service | Name, description, duration and price | Business data; possible incidental PII in free text | Server-resolved tenant partition, no payment-card data and durable deactivation |
-| ChannelIdentity | Normalized email, phone or provider-neutral address; display label | PII | Deterministic ID, server-resolved tenant partition and no provider credentials |
+| ChannelIdentity | Normalized email, phone or provider-neutral address; display label; optional opaque inbound route | PII | Deterministic ID, server-resolved tenant partition, high-entropy Postmark routing and no provider credentials |
 | Conversation | Contact label, optional Customer ID and last-message preview | PII and communication metadata | Hierarchical tenant partition, bounded preview, server authorization and Cosmos encryption at rest |
-| Message | Message body, direction, channel and optional Customer ID | PII and sensitive communication content | Full tenant and Conversation partition key, 4,000-character limit, server authorization and Cosmos encryption at rest |
+| Message | Message body, direction, channel, optional Customer ID and non-secret provider correlation/failure metadata | PII and sensitive communication content | Full tenant and Conversation partition key, 4,000-character limit, server authorization, idempotent request/provider IDs and Cosmos encryption at rest |
 | Booking | Customer, Service and optional Conversation IDs; times, amount, currency, deposit terms, overriding user and status | Pseudonymous Customer activity and business transaction data | Server-resolved tenant partition, same-tenant reference checks, no copied Customer contact data and Cosmos encryption at rest |
 | Payment | Booking ID, amount, currency, status, connected-account ID, Checkout Session ID and event IDs | Financial transaction metadata; no PCI card data | Server-resolved tenant partition, provider adapter, signed webhooks, mode and account validation, idempotent identifiers, ETags and Cosmos encryption at rest |
 | Reminder | Booking ID, schedule, timezone, channel and processing history | Pseudonymous Customer activity and communication metadata | Server-resolved tenant partition, authenticated Booking reads, ETag claims, processing leases, no message body and Cosmos encryption at rest |

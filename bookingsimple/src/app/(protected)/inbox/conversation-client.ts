@@ -55,7 +55,9 @@ function isMessage(value: unknown): value is MessageView {
     "body" in value &&
     typeof value.body === "string" &&
     "deliveryStatus" in value &&
-    ["RECEIVED", "LOCAL_ONLY"].includes(String(value.deliveryStatus)) &&
+    ["RECEIVED", "LOCAL_ONLY", "PENDING", "SENT", "FAILED"].includes(
+      String(value.deliveryStatus),
+    ) &&
     "createdAt" in value &&
     typeof value.createdAt === "string"
   );

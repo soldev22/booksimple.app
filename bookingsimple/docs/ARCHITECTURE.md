@@ -884,8 +884,28 @@ channels or unknown provider configuration explicitly.
 
 Message documents can retain optional provider, external-message and
 provider-event identifiers for later reconciliation without changing the
-Conversation model. No real provider is selected in Stage 13, no public
-messaging webhook is exposed, and Inbox replies remain `LOCAL_ONLY`.
+Conversation model.
+
+Stage 14 selects Postmark for Email only. The existing verified platform sender
+is used for outbound mail. Each Email channel identity receives one random,
+opaque 256-bit inbound route key when its first real reply is sent. Postmark
+plus-addressing puts that key in `ReplyTo`; the inbound `MailboxHash` resolves
+the identity without exposing a tenant or Conversation ID. Resolution requires
+exactly one route match and the normalized webhook sender must equal that
+identity's tenant-local Email address.
+
+The Postmark inbound Route Handler uses server-held HTTP Basic Auth credentials
+because Postmark inbound processing does not provide a Stripe-style signed
+payload. It validates and bounds the raw payload before normalization.
+Provider Message IDs produce deterministic internal Message IDs, making
+webhook retries idempotent. Outbound client request IDs similarly prevent a
+browser retry from sending twice. Message state moves from `PENDING` to `SENT`
+when Postmark accepts the request or to `FAILED` with a safe failure category;
+Postmark acceptance is not represented as final delivery.
+
+`MOCK_TEST` remains available for local-only development. SMS, WhatsApp and
+Facebook / Meta adapters are deferred. Attachments and Postmark delivery or
+bounce webhooks are outside Stage 14.
 
 ---
 

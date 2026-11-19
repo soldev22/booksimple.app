@@ -6,6 +6,10 @@ import {
   parseProviderWebhook,
   sendProviderMessage,
 } from "../src/server/messaging-service.ts";
+import {
+  postmarkInboundReplyAddress,
+  postmarkMessagingProvider,
+} from "../src/server/postmark-messaging-provider.ts";
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
@@ -18,6 +22,8 @@ test("mock provider sends normalized outbound messages idempotently", async () =
     messageId,
     channel: "EMAIL",
     recipientAddress: "customer@example.invalid",
+    subject: "Message from Example Business",
+    replyAddress: "inbound+route@example.invalid",
     body: "Your booking is confirmed.",
     requestedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -58,6 +64,7 @@ test("mock provider validates and normalizes inbound webhook payloads", async ()
         channel: "SMS",
         senderAddress: "+447700900123",
         recipientAddress: "+447700900999",
+        providerRouteKey: "+447700900999",
         body: "Can I move my booking?",
         receivedAt: "2026-01-02T03:04:05.000Z",
       },
@@ -94,8 +101,159 @@ test("messaging service rejects unsupported adapter channels", async () => {
       messageId,
       channel: "FACEBOOK",
       recipientAddress: "provider-user-1",
+      subject: "Message",
+      replyAddress: "inbound@example.invalid",
       body: "Hello",
       requestedAt: "2026-01-01T00:00:00.000Z",
     }),
   );
+});
+
+test("Postmark provider maps Email sends and validates the provider receipt", async () => {
+  const previousFetch = globalThis.fetch;
+  process.env.POSTMARK_SERVER_TOKEN = "test-server-token";
+  process.env.POSTMARK_FROM_EMAIL = "messages@example.test";
+  process.env.POSTMARK_MESSAGE_STREAM = "outbound";
+  let request;
+  globalThis.fetch = async (input, init) => {
+    request = { input, init };
+    return Response.json({
+      ErrorCode: 0,
+      Message: "OK",
+      MessageID: "b7bc2f4a-e38e-4336-af7d-e6c392c2f817",
+      SubmittedAt: "2026-01-01T00:00:01.000Z",
+      To: "customer@example.test",
+    });
+  };
+  try {
+    const receipt = await sendProviderMessage(postmarkMessagingProvider, {
+      tenantId,
+      conversationId,
+      messageId,
+      channel: "EMAIL",
+      recipientAddress: "customer@example.test",
+      subject: "Message from Example Business",
+      replyAddress:
+        "ca9ceb66cfef778ea61ebe6a86e5f2da+opaque-route@inbound.postmarkapp.com",
+      body: "Your booking is confirmed.",
+      requestedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.equal(request.input, "https://api.postmarkapp.com/email");
+    assert.equal(
+      request.init.headers["X-Postmark-Server-Token"],
+      "test-server-token",
+    );
+    assert.deepEqual(JSON.parse(request.init.body), {
+      From: "messages@example.test",
+      To: "customer@example.test",
+      ReplyTo:
+        "ca9ceb66cfef778ea61ebe6a86e5f2da+opaque-route@inbound.postmarkapp.com",
+      Subject: "Message from Example Business",
+      TextBody: "Your booking is confirmed.",
+      MessageStream: "outbound",
+      Tag: "conversation-message",
+      Metadata: { messageId },
+    });
+    assert.deepEqual(receipt, {
+      provider: "POSTMARK",
+      externalMessageId: "b7bc2f4a-e38e-4336-af7d-e6c392c2f817",
+      status: "ACCEPTED",
+      acceptedAt: "2026-01-01T00:00:01.000Z",
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Postmark provider rejects provider failures without exposing response content", async () => {
+  const previousFetch = globalThis.fetch;
+  process.env.POSTMARK_SERVER_TOKEN = "test-server-token";
+  process.env.POSTMARK_FROM_EMAIL = "messages@example.test";
+  globalThis.fetch = async () =>
+    Response.json(
+      { ErrorCode: 406, Message: "Inactive recipient" },
+      { status: 422 },
+    );
+  try {
+    await assert.rejects(
+      () =>
+        sendProviderMessage(postmarkMessagingProvider, {
+          tenantId,
+          conversationId,
+          messageId,
+          channel: "EMAIL",
+          recipientAddress: "customer@example.test",
+          subject: "Message from Example Business",
+          replyAddress:
+            "ca9ceb66cfef778ea61ebe6a86e5f2da+opaque-route@inbound.postmarkapp.com",
+          body: "Hello",
+          requestedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      (error) =>
+        error?.category === "PROVIDER" &&
+        error?.providerStatus === 422 &&
+        error?.providerCode === 406 &&
+        !error.message.includes("Inactive recipient"),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Postmark provider authenticates and normalizes inbound Email", async () => {
+  process.env.POSTMARK_INBOUND_WEBHOOK_USERNAME = "webhook-user";
+  process.env.POSTMARK_INBOUND_WEBHOOK_PASSWORD = "webhook-password";
+  const routeKey = "a".repeat(43);
+  const rawBody = JSON.stringify({
+    MessageID: "40129f65-40a4-4243-80c6-7f3844c98a7d",
+    FromFull: { Email: "Customer@Example.COM" },
+    ToFull: [{ Email: "inbound@example.test" }],
+    MailboxHash: routeKey,
+    Date: "2026-01-02T03:04:05.000Z",
+    TextBody: "Quoted history",
+    StrippedTextReply: "Can I move my booking?",
+    Attachments: [],
+  });
+  const authorization = `Basic ${Buffer.from(
+    "webhook-user:webhook-password",
+  ).toString("base64")}`;
+  assert.deepEqual(
+    await parseProviderWebhook(postmarkMessagingProvider, {
+      rawBody,
+      headers: { authorization },
+    }),
+    [
+      {
+        provider: "POSTMARK",
+        providerEventId: "40129f65-40a4-4243-80c6-7f3844c98a7d",
+        externalMessageId: "40129f65-40a4-4243-80c6-7f3844c98a7d",
+        channel: "EMAIL",
+        senderAddress: "customer@example.com",
+        recipientAddress: "inbound@example.test",
+        providerRouteKey: routeKey,
+        body: "Can I move my booking?",
+        receivedAt: "2026-01-02T03:04:05.000Z",
+      },
+    ],
+  );
+  await assert.rejects(() =>
+    parseProviderWebhook(postmarkMessagingProvider, {
+      rawBody,
+      headers: {
+        authorization: `Basic ${Buffer.from(
+          "webhook-user:wrong-password",
+        ).toString("base64")}`,
+      },
+    }),
+  );
+});
+
+test("Postmark reply addresses use an opaque MailboxHash route", () => {
+  process.env.POSTMARK_INBOUND_ADDRESS =
+    "ca9ceb66cfef778ea61ebe6a86e5f2da@inbound.postmarkapp.com";
+  assert.equal(
+    postmarkInboundReplyAddress("a".repeat(43)),
+    `ca9ceb66cfef778ea61ebe6a86e5f2da+${"a".repeat(43)}@inbound.postmarkapp.com`,
+  );
+  assert.throws(() => postmarkInboundReplyAddress("tenant-guid"));
 });

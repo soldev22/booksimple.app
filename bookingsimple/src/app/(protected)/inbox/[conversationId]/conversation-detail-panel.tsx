@@ -69,6 +69,21 @@ function DuplicateWarnings({
   );
 }
 
+function deliveryLabel(message: MessageView): string {
+  switch (message.deliveryStatus) {
+    case "RECEIVED":
+      return "Received by Email";
+    case "SENT":
+      return "Accepted by Postmark for delivery";
+    case "PENDING":
+      return "Waiting for the Email provider";
+    case "FAILED":
+      return "Email send failed";
+    case "LOCAL_ONLY":
+      return "Saved locally - not externally delivered";
+  }
+}
+
 export function ConversationDetailPanel({
   initialDetails,
 }: {
@@ -104,7 +119,11 @@ export function ConversationDetailPanel({
         await conversationApi(
           `/api/conversations/${conversation.id}/messages`,
           "POST",
-          { body: values.body, direction: values.direction },
+          {
+            body: values.body,
+            direction: "OUTBOUND",
+            requestId: crypto.randomUUID(),
+          },
         ),
       );
       setDetails((current) => ({
@@ -114,11 +133,12 @@ export function ConversationDetailPanel({
       }));
       form.reset();
       setMessage(
-        result.message.deliveryStatus === "LOCAL_ONLY"
-          ? "Reply saved locally. It was not sent to an external channel."
-          : "Simulated incoming message added.",
+        result.message.deliveryStatus === "SENT"
+          ? "Email accepted by Postmark for delivery."
+          : "Reply saved locally. It was not sent to an external channel.",
       );
     } catch (failure) {
+      await refreshDetails().catch(() => undefined);
       setError(
         failure instanceof Error
           ? failure.message
@@ -310,25 +330,12 @@ export function ConversationDetailPanel({
                 </div>
                 <p>{item.body}</p>
                 <span className="conversation-delivery">
-                  {item.deliveryStatus === "LOCAL_ONLY"
-                    ? "Saved locally - not externally delivered"
-                    : "Simulated incoming message"}
+                  {deliveryLabel(item)}
                 </span>
               </li>
             ))}
           </ol>
           <form className="conversation-reply-form" onSubmit={sendMessage}>
-            <label className="account-field">
-              <span>Message type</span>
-              <select
-                defaultValue="OUTBOUND"
-                disabled={Boolean(busy)}
-                name="direction"
-              >
-                <option value="OUTBOUND">Local outbound reply</option>
-                <option value="INBOUND">Incoming message (simulate)</option>
-              </select>
-            </label>
             <label className="account-field">
               <span>Message</span>
               <textarea
@@ -340,12 +347,16 @@ export function ConversationDetailPanel({
               />
             </label>
             <p className="conversation-local-note">
-              The Stage 13 provider interface is ready, but no real channel is
-              connected. Outbound replies remain local-only and are not sent
-              through WhatsApp, Facebook / Meta, SMS or email.
+              {conversation.channel === "EMAIL"
+                ? "Replies use Postmark Email. Provider failures remain visible in this Conversation."
+                : "Only Email is connected in this stage. This channel cannot be sent externally."}
             </p>
-            <button className="account-button" disabled={Boolean(busy)} type="submit">
-              {busy === "message" ? "Saving..." : "Save message"}
+            <button
+              className="account-button"
+              disabled={Boolean(busy) || conversation.channel !== "EMAIL"}
+              type="submit"
+            >
+              {busy === "message" ? "Sending..." : "Send Email"}
             </button>
           </form>
         </section>

@@ -360,20 +360,36 @@ open browser. Processing uses ETags and expiring leases, skips duplicate sends,
 reschedules unsent reminders when Booking time changes, and cancels unsent
 reminders for completed, cancelled or no-show Bookings.
 
-### Messaging provider interface
+### Email messaging
 
-Stage 13 defines one provider-neutral server boundary for outbound sends,
+Stage 13 defines the provider-neutral server boundary for outbound sends,
 webhook authenticity checks and inbound-message normalization. Provider
 payloads remain inside adapters; Conversation and Message records use the
 normalized channel, address, body, timestamps and optional provider
 correlation identifiers.
 
-`MESSAGING_PROVIDER` currently accepts only `MOCK_TEST`. The mock adapter
-supports the four internal channels, produces deterministic outbound
-references, validates a development-only body digest and converts its own
-payload into the internal incoming-message model. It does not contact an
-external service. Inbox replies intentionally remain `LOCAL_ONLY` until Stage
-14 selects and connects one real provider.
+Stage 14 adds Postmark as the first real provider for Email only. Set
+`MESSAGING_PROVIDER=POSTMARK` with the server token, verified platform sender,
+inbound address and inbound-webhook Basic Auth credentials documented in
+`.env.example`. Outbound Inbox requests are idempotent, retain Postmark message
+IDs and show pending, sent or failed state. Their `ReplyTo` uses an opaque
+per-Conversation Postmark `MailboxHash` route.
+
+Configure the Postmark inbound stream to POST to:
+
+```text
+https://<public-origin>/api/webhooks/postmark/inbound
+```
+
+Protect that URL with the same generated Basic Auth username and password held
+in the server environment. Inbound payloads are authenticated, normalized and
+matched to the opaque route plus the exact tenant-local Email identity.
+Postmark retries reuse a deterministic Message ID and do not duplicate Inbox
+messages. Raw payloads, message content and credentials are not written to
+logs.
+
+`MOCK_TEST` remains available for local-only development. SMS, WhatsApp and
+Facebook / Meta are not connected in Stage 14.
 
 ### Customer management
 
@@ -539,7 +555,8 @@ connected and Inbox replies remain local-only. Stage 14 has not started.
 21. Azure Deployment
 
 Each stage must be completed and verified before moving to the next.
-Stages 1 through 11 are complete. Stage 12 has not started.
+Stages 1 through 14 are implemented. Stage 15 was implemented early, but
+Stripe sandbox validation remains pending.
 
 ---
 

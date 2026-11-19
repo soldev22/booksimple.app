@@ -86,6 +86,10 @@ export const mockMessagingProvider: MessagingProviderAdapter = {
           input.message.channel,
           input.message.recipientAddress,
         ),
+        providerRouteKey: normalizedAddress(
+          input.message.channel,
+          input.message.recipientAddress,
+        ),
         body: input.message.body,
         receivedAt: new Date(input.message.receivedAt).toISOString(),
       },

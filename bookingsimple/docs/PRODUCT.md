@@ -248,13 +248,13 @@ Direction must distinguish between:
 
 Core conversation behaviour must remain independent of individual communication providers.
 
-The implemented first Inbox allows communication to begin with either a linked
+The implemented Inbox allows communication to begin with either a linked
 Customer or an unresolved contact. Exact email and phone matching remains
 tenant-scoped; ambiguous matches require staff selection, and no match offers a
-prefilled Customer creation form. Current messages are local development
-records only. Stage 13 adds a provider-neutral adapter boundary and mock
-provider, but outbound replies remain clearly marked local-only and are not
-sent through WhatsApp, Meta, SMS or email until a real channel is selected.
+prefilled Customer creation form. Stage 14 connects Postmark Email as the first
+real channel. Business replies can be sent by Email and customer Email replies
+return to the same Conversation through an opaque reply route. Failed sends
+remain visible. SMS, WhatsApp and Facebook / Meta remain unconnected.
 
 ---
 

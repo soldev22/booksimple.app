@@ -1,7 +1,26 @@
 import type { CommunicationChannel } from "./conversation-types";
 
-export type MessagingProviderName = "MOCK_TEST";
+export type MessagingProviderName = "MOCK_TEST" | "POSTMARK";
 export type ProviderMessageStatus = "ACCEPTED";
+export type MessagingProviderErrorCategory =
+  | "AUTHENTICATION"
+  | "CONFIGURATION"
+  | "PAYLOAD"
+  | "PROVIDER"
+  | "TIMEOUT";
+
+export class MessagingProviderError extends Error {
+  constructor(
+    message: string,
+    readonly category: MessagingProviderErrorCategory,
+    readonly status: number,
+    readonly providerStatus?: number,
+    readonly providerCode?: number,
+  ) {
+    super(message);
+    this.name = "MessagingProviderError";
+  }
+}
 
 export type ProviderWebhookRequest = {
   rawBody: string;
@@ -14,6 +33,8 @@ export type OutboundProviderMessage = {
   messageId: string;
   channel: CommunicationChannel;
   recipientAddress: string;
+  subject: string;
+  replyAddress: string;
   body: string;
   requestedAt: string;
 };
@@ -32,6 +53,7 @@ export type NormalizedIncomingMessage = {
   channel: CommunicationChannel;
   senderAddress: string;
   recipientAddress: string;
+  providerRouteKey: string;
   body: string;
   receivedAt: string;
 };

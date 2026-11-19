@@ -2,14 +2,16 @@ import "server-only";
 
 import { z } from "zod";
 import { COMMUNICATION_CHANNELS } from "./conversation-types";
-import type {
-  MessagingProviderAdapter,
-  NormalizedIncomingMessage,
-  OutboundProviderMessage,
-  ProviderMessageReceipt,
-  ProviderWebhookRequest,
+import {
+  MessagingProviderError,
+  type MessagingProviderAdapter,
+  type NormalizedIncomingMessage,
+  type OutboundProviderMessage,
+  type ProviderMessageReceipt,
+  type ProviderWebhookRequest,
 } from "./messaging-provider";
 import { mockMessagingProvider } from "./mock-messaging-provider";
+import { postmarkMessagingProvider } from "./postmark-messaging-provider";
 
 const outboundMessageSchema = z
   .object({
@@ -18,6 +20,8 @@ const outboundMessageSchema = z
     messageId: z.uuid(),
     channel: z.enum(COMMUNICATION_CHANNELS),
     recipientAddress: z.string().trim().min(1).max(254),
+    subject: z.string().trim().min(1).max(200),
+    replyAddress: z.email().max(254),
     body: z.string().trim().min(1).max(4_000),
     requestedAt: z.iso.datetime({ offset: true }),
   })
@@ -25,7 +29,7 @@ const outboundMessageSchema = z
 
 const messageReceiptSchema = z
   .object({
-    provider: z.literal("MOCK_TEST"),
+    provider: z.enum(["MOCK_TEST", "POSTMARK"]),
     externalMessageId: z.string().trim().min(1).max(200),
     status: z.literal("ACCEPTED"),
     acceptedAt: z.iso.datetime({ offset: true }),
@@ -34,12 +38,13 @@ const messageReceiptSchema = z
 
 const normalizedIncomingSchema = z
   .object({
-    provider: z.literal("MOCK_TEST"),
+    provider: z.enum(["MOCK_TEST", "POSTMARK"]),
     providerEventId: z.string().trim().min(1).max(200),
     externalMessageId: z.string().trim().min(1).max(200),
     channel: z.enum(COMMUNICATION_CHANNELS),
     senderAddress: z.string().trim().min(1).max(254),
     recipientAddress: z.string().trim().min(1).max(254),
+    providerRouteKey: z.string().trim().min(1).max(254),
     body: z.string().trim().min(1).max(4_000),
     receivedAt: z.iso.datetime({ offset: true }),
   })
@@ -49,6 +54,7 @@ export function configuredMessagingProvider(): MessagingProviderAdapter {
   const configured =
     process.env.MESSAGING_PROVIDER?.trim().toUpperCase() || "MOCK_TEST";
   if (configured === "MOCK_TEST") return mockMessagingProvider;
+  if (configured === "POSTMARK") return postmarkMessagingProvider;
   throw new Error("The messaging provider configuration is invalid.");
 }
 
@@ -69,8 +75,12 @@ export async function parseProviderWebhook(
   provider: MessagingProviderAdapter,
   request: ProviderWebhookRequest,
 ): Promise<NormalizedIncomingMessage[]> {
-  if (Buffer.byteLength(request.rawBody, "utf8") > 256_000) {
-    throw new Error("The messaging webhook payload is too large.");
+  if (Buffer.byteLength(request.rawBody, "utf8") > 1_000_000) {
+    throw new MessagingProviderError(
+      "The messaging webhook payload is too large.",
+      "PAYLOAD",
+      413,
+    );
   }
   await provider.validateWebhook(request);
   return z

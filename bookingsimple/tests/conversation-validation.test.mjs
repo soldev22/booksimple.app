@@ -77,8 +77,19 @@ test("Conversation input is strict and validates channel-specific addresses", ()
 
 test("Message, linking and paging inputs are strictly validated", () => {
   assert.deepEqual(
-    parseCreateMessageInput({ body: " Reply ", direction: "OUTBOUND" }),
-    { body: "Reply", direction: "OUTBOUND" },
+    parseCreateMessageInput({
+      body: " Reply ",
+      direction: "OUTBOUND",
+      requestId: "11111111-1111-4111-8111-111111111111",
+    }),
+    {
+      body: "Reply",
+      direction: "OUTBOUND",
+      requestId: "11111111-1111-4111-8111-111111111111",
+    },
+  );
+  assert.throws(() =>
+    parseCreateMessageInput({ body: "Reply", direction: "OUTBOUND" }),
   );
   assert.throws(() =>
     parseCreateMessageInput({

@@ -65,9 +65,12 @@ will not copy this pattern automatically.
 | `reminder` | Schedules and tracks one Booking reminder | Booking ID, channel, offset, UTC schedule, timezone, lifecycle status, attempts, processing lease and mock provider reference | Company tenant | Durable Booking history until an approved retention policy exists | Yes |
 
 Conversation Message records may additionally retain a non-secret messaging
-provider name, external message ID and provider event ID. These values support
-delivery correlation and idempotency; raw provider webhook payloads and
-credentials are not stored in Message documents.
+provider name, external message ID, provider event ID, provider-attempt time,
+sent time and safe failure category. These values support delivery correlation,
+visible failure handling and idempotency; raw provider webhook payloads and
+credentials are not stored in Message documents. Email Channel Identity
+records may retain a random opaque inbound route key. It identifies no tenant
+or Conversation without a server-side lookup.
 
 ## Retention Rules
 
@@ -308,8 +311,8 @@ Message decisions:
 - Messages are separate documents because history is unbounded.
 - Direction is `INBOUND` or `OUTBOUND`.
 - Channel is `WHATSAPP`, `FACEBOOK`, `SMS` or `EMAIL`.
-- Development replies use `LOCAL_ONLY`; the UI must not imply external
-  delivery.
+- Development replies use `LOCAL_ONLY`. Postmark Email replies use `PENDING`,
+  `SENT` or `FAILED`; `SENT` means accepted by Postmark, not final delivery.
 - Message creation and Conversation summary replacement use one transactional
   batch inside the full hierarchical partition.
 - Message bodies are sensitive communication content. They are protected by
@@ -331,6 +334,7 @@ tenant-local contact matching.
   "normalizedAddress": "+441234567890",
   "displayLabel": "+44 1234 567890",
   "conversationId": "conversation-guid",
+  "inboundRouteKey": "optional-random-opaque-email-route",
   "customerId": "optional-customer-guid",
   "createdAt": "2026-11-17T16:55:00.000Z",
   "updatedAt": "2026-11-17T16:55:00.000Z"
@@ -344,6 +348,9 @@ Channel identity decisions:
   in the partition key.
 - Email is lowercase and trimmed; WhatsApp and SMS use canonical phone values;
   Facebook uses a bounded provider-neutral identifier during local development.
+- Email identities receive an opaque 256-bit inbound route only when a real
+  Postmark reply needs one. The route is unique by entropy and is never treated
+  as authorization without sender and document validation.
 - Exactly one Customer match may link automatically. Multiple exact Customer
   matches remain unresolved for staff selection.
 - No match offers Customer creation with known fields prefilled.

@@ -106,6 +106,23 @@ export async function queryMessagePage(
   };
 }
 
+export async function readMessageDocument(
+  id: string,
+  tenantId: string,
+  conversationId: string,
+): Promise<Versioned<MessageDocument> | null> {
+  try {
+    const response = await conversationContainer()
+      .item(id, conversationPartitionKey(tenantId, conversationId))
+      .read<MessageDocument>();
+    if (!response.resource || !response.etag) return null;
+    return { document: response.resource, etag: response.etag };
+  } catch (error) {
+    if (isStatus(error, 404)) return null;
+    throw error;
+  }
+}
+
 export async function commitConversationBatch(
   tenantId: string,
   conversationId: string,
@@ -152,6 +169,24 @@ export async function replaceConversationDocument(
   return { document: response.resource, etag: response.etag };
 }
 
+export async function replaceMessageDocument(
+  document: MessageDocument,
+  etag: string,
+): Promise<Versioned<MessageDocument>> {
+  const response = await conversationContainer()
+    .item(
+      document.id,
+      conversationPartitionKey(document.tenantId, document.conversationId),
+    )
+    .replace<MessageDocument>(document, {
+      accessCondition: { type: "IfMatch", condition: etag },
+    });
+  if (!response.resource || !response.etag) {
+    throw new StorageError("Database update did not return a Message.", 503);
+  }
+  return { document: response.resource, etag: response.etag };
+}
+
 export async function readChannelIdentity(
   id: string,
   tenantId: string,
@@ -166,6 +201,24 @@ export async function readChannelIdentity(
     if (isStatus(error, 404)) return null;
     throw error;
   }
+}
+
+export async function queryChannelIdentitiesByInboundRoute(
+  routeKey: string,
+): Promise<ChannelIdentityDocument[]> {
+  const response =
+    await channelIdentityContainer().items.query<ChannelIdentityDocument>({
+      query: `SELECT TOP 2 * FROM c
+        WHERE c.type = @type
+          AND c.channel = @channel
+          AND c.inboundRouteKey = @routeKey`,
+      parameters: [
+        { name: "@type", value: "channel-identity" },
+        { name: "@channel", value: "EMAIL" },
+        { name: "@routeKey", value: routeKey },
+      ],
+    }).fetchNext();
+  return response.resources ?? [];
 }
 
 export async function createChannelIdentity(

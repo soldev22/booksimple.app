@@ -17,8 +17,17 @@ import {
   conversationContainer,
 } from "../src/server/conversation-storage.ts";
 import { customerContainer } from "../src/server/customer-storage.ts";
+import {
+  addConversationMessageForContext,
+  processIncomingProviderMessage,
+} from "../src/server/conversation-service.ts";
 
 const baseUrl = process.env.AUTH_PAGE_TEST_BASE_URL;
+
+function restoreEnvironment(name, value) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 function syntheticUser(email, tenantId) {
   const now = new Date().toISOString();
@@ -47,7 +56,7 @@ function syntheticUser(email, tenantId) {
 }
 
 test(
-  "Conversation APIs isolate tenants, match Customers and keep replies local",
+  "Conversation APIs isolate tenants, match Customers and keep mock replies local",
   { skip: !baseUrl },
   async () => {
     const tenantA = randomUUID();
@@ -72,6 +81,13 @@ test(
       [tenantB, new Set()],
     ]);
     const origin = new URL(baseUrl).origin;
+    const originalFetch = globalThis.fetch;
+    const originalEnvironment = {
+      messagingProvider: process.env.MESSAGING_PROVIDER,
+      postmarkToken: process.env.POSTMARK_SERVER_TOKEN,
+      postmarkFrom: process.env.POSTMARK_FROM_EMAIL,
+      inboundAddress: process.env.POSTMARK_INBOUND_ADDRESS,
+    };
     const request = (path, token, options = {}) =>
       fetch(new URL(path, baseUrl), {
         redirect: "manual",
@@ -192,6 +208,7 @@ test(
           body: JSON.stringify({
             body: "This is a local reply.",
             direction: "OUTBOUND",
+            requestId: randomUUID(),
           }),
         },
       );
@@ -342,6 +359,7 @@ test(
               body: JSON.stringify({
                 body: "Cross-tenant write",
                 direction: "OUTBOUND",
+                requestId: randomUUID(),
               }),
             },
           )
@@ -380,7 +398,191 @@ test(
       );
       assert.equal(reopened.created, false);
       assert.equal(reopened.conversation.messageCount, 3);
+
+      process.env.MESSAGING_PROVIDER = "POSTMARK";
+      process.env.POSTMARK_SERVER_TOKEN = "stage14-test-token";
+      process.env.POSTMARK_FROM_EMAIL = "messages@example.test";
+      process.env.POSTMARK_INBOUND_ADDRESS =
+        "ca9ceb66cfef778ea61ebe6a86e5f2da@inbound.postmarkapp.com";
+      let sendCount = 0;
+      let rejectSend = false;
+      globalThis.fetch = async (_input, init) => {
+        sendCount += 1;
+        if (rejectSend) {
+          return Response.json(
+            { ErrorCode: 406, Message: "Inactive recipient" },
+            { status: 422 },
+          );
+        }
+        const body = JSON.parse(init.body);
+        return Response.json({
+          ErrorCode: 0,
+          Message: "OK",
+          MessageID: `postmark-${body.Metadata.messageId}`,
+          SubmittedAt: new Date().toISOString(),
+          To: body.To,
+        });
+      };
+      const tenantContext = {
+        tenantId: tenantA,
+        businessName: "Conversation test company A",
+        username: userA.membership.username,
+        role: "company_user",
+      };
+      const sentRequestId = randomUUID();
+      const sent = await addConversationMessageForContext(
+        tenantContext,
+        exactConversation.conversation.id,
+        {
+          body: "This is a real Email attempt.",
+          direction: "OUTBOUND",
+          requestId: sentRequestId,
+        },
+      );
+      assert.equal(sent.message.deliveryStatus, "SENT");
+      const repeated = await addConversationMessageForContext(
+        tenantContext,
+        exactConversation.conversation.id,
+        {
+          body: "This is a real Email attempt.",
+          direction: "OUTBOUND",
+          requestId: sentRequestId,
+        },
+      );
+      assert.equal(repeated.message.id, sent.message.id);
+      assert.equal(sendCount, 1);
+      const sentDocument = (
+        await conversationContainer()
+          .item(sentRequestId, [
+            tenantA,
+            exactConversation.conversation.id,
+          ])
+          .read()
+      ).resource;
+      assert.equal(sentDocument.messagingProvider, "POSTMARK");
+      assert.equal(
+        sentDocument.externalMessageId,
+        `postmark-${sentRequestId}`,
+      );
+
+      rejectSend = true;
+      const failedRequestId = randomUUID();
+      await assert.rejects(() =>
+        addConversationMessageForContext(
+          tenantContext,
+          exactConversation.conversation.id,
+          {
+            body: "This provider attempt will fail.",
+            direction: "OUTBOUND",
+            requestId: failedRequestId,
+          },
+        ),
+      );
+      const failedDocument = (
+        await conversationContainer()
+          .item(failedRequestId, [
+            tenantA,
+            exactConversation.conversation.id,
+          ])
+          .read()
+      ).resource;
+      assert.equal(failedDocument.deliveryStatus, "FAILED");
+      assert.equal(failedDocument.failureCategory, "PROVIDER");
+      globalThis.fetch = originalFetch;
+      restoreEnvironment(
+        "MESSAGING_PROVIDER",
+        originalEnvironment.messagingProvider,
+      );
+      restoreEnvironment(
+        "POSTMARK_SERVER_TOKEN",
+        originalEnvironment.postmarkToken,
+      );
+      restoreEnvironment("POSTMARK_FROM_EMAIL", originalEnvironment.postmarkFrom);
+      restoreEnvironment(
+        "POSTMARK_INBOUND_ADDRESS",
+        originalEnvironment.inboundAddress,
+      );
+
+      const identityQuery = channelIdentityContainer().items.query(
+        {
+          query:
+            "SELECT * FROM c WHERE c.conversationId = @conversationId",
+          parameters: [
+            {
+              name: "@conversationId",
+              value: exactConversation.conversation.id,
+            },
+          ],
+        },
+        { partitionKey: tenantA },
+      );
+      const identityPage = await identityQuery.fetchNext();
+      assert.equal(identityPage.resources.length, 1);
+      const identity = identityPage.resources[0];
+      const routeKey = identity.inboundRouteKey;
+      assert.match(routeKey, /^[A-Za-z0-9_-]{43}$/);
+
+      const incoming = {
+        provider: "POSTMARK",
+        providerEventId: `postmark-event-${suffix}`,
+        externalMessageId: `postmark-message-${suffix}`,
+        channel: "EMAIL",
+        senderAddress: exactEmail,
+        recipientAddress: "inbound@example.invalid",
+        providerRouteKey: routeKey,
+        body: "This arrived through Postmark.",
+        receivedAt: new Date().toISOString(),
+      };
+      const processed = await processIncomingProviderMessage(incoming);
+      assert.equal(processed.status, "PROCESSED");
+      const duplicate = await processIncomingProviderMessage(incoming);
+      assert.equal(duplicate.status, "DUPLICATE");
+      const wrongTenantSender = await processIncomingProviderMessage({
+        ...incoming,
+        providerEventId: `postmark-event-wrong-${suffix}`,
+        externalMessageId: `postmark-message-wrong-${suffix}`,
+        senderAddress: tenantBCustomer.email,
+      });
+      assert.equal(wrongTenantSender.status, "IGNORED");
+
+      const inboundMessage = (
+        await conversationContainer()
+          .item(processed.messageId, [
+            tenantA,
+            exactConversation.conversation.id,
+          ])
+          .read()
+      ).resource;
+      assert.equal(inboundMessage.messagingProvider, "POSTMARK");
+      assert.equal(
+        inboundMessage.externalMessageId,
+        incoming.externalMessageId,
+      );
+      assert.equal(inboundMessage.providerEventId, incoming.providerEventId);
+      const afterInbound = (
+        await conversationContainer()
+          .item(exactConversation.conversation.id, [
+            tenantA,
+            exactConversation.conversation.id,
+          ])
+          .read()
+      ).resource;
+      assert.equal(afterInbound.messageCount, 6);
     } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnvironment(
+        "MESSAGING_PROVIDER",
+        originalEnvironment.messagingProvider,
+      );
+      restoreEnvironment(
+        "POSTMARK_SERVER_TOKEN",
+        originalEnvironment.postmarkToken,
+      );
+      restoreEnvironment("POSTMARK_FROM_EMAIL", originalEnvironment.postmarkFrom);
+      restoreEnvironment(
+        "POSTMARK_INBOUND_ADDRESS",
+        originalEnvironment.inboundAddress,
+      );
       for (const [tenantId, ids] of conversationIds) {
         for (const conversationId of ids) {
           const query = conversationContainer().items.query(

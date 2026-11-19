@@ -67,7 +67,8 @@ const createConversationSchema = z
 const createMessageSchema = z
   .object({
     body: z.string().trim().min(1).max(4_000),
-    direction: directionSchema,
+    direction: z.literal("OUTBOUND"),
+    requestId: z.uuid(),
   })
   .strict();
 

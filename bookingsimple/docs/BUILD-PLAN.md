@@ -1193,6 +1193,9 @@ STOP after completion.
 
 # STAGE 14 — First Real Communication Channel
 
+Status: IMPLEMENTED; EXTERNAL END-TO-END VALIDATION REQUIRES A PUBLIC HTTPS
+DEPLOYMENT AND CONTROLLED TEST MAILBOX.
+
 ## Objective
 
 Connect one real communication channel end-to-end.
@@ -1252,6 +1255,26 @@ Customer
 - duplicate webhook does not duplicate message
 - failures are visible/handled
 - tenant isolation proven
+
+## Implemented Stage 14 Design
+
+Postmark Email is the single real channel. Outbound sends use the existing
+verified platform sender and a provider-neutral adapter. Each browser send has
+a UUID request ID and is persisted before provider I/O; repeated requests do
+not send twice. Messages retain Postmark Message IDs and explicit pending, sent
+or failed state.
+
+Email channel identities store a random opaque inbound route key. The Postmark
+`ReplyTo` uses that key through `MailboxHash` plus-addressing. The public
+inbound Route Handler authenticates with server-held HTTP Basic Auth
+credentials, validates and normalizes the Postmark payload, resolves exactly
+one route, verifies the sender against the tenant-local Email identity and
+uses a deterministic provider Message ID for duplicate protection. Unknown or
+sender-mismatched routes are safely logged without credentials, addresses or
+message content and are acknowledged without creating a Message.
+
+Twilio SMS, Meta WhatsApp/Facebook, attachments and delivery/bounce webhooks
+remain deferred.
 
 STOP after completion.
 

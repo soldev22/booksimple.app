@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { OperationInput } from "@azure/cosmos";
+import { randomToken } from "./auth-crypto";
 import { StorageError } from "./auth-storage";
 import { getCustomer } from "./customer-service";
 import { queryCustomerPage } from "./customer-storage";
@@ -10,12 +11,15 @@ import {
   commitConversationBatch,
   createChannelIdentity,
   deleteChannelIdentity,
+  queryChannelIdentitiesByInboundRoute,
   queryConversationPage,
   queryMessagePage,
   readChannelIdentity,
   readConversationDocument,
+  readMessageDocument,
   replaceChannelIdentity,
   replaceConversationDocument,
+  replaceMessageDocument,
 } from "./conversation-storage";
 import {
   CONVERSATION_SCHEMA_VERSION,
@@ -27,6 +31,7 @@ import {
   type ConversationPage,
   type ConversationView,
   type MessageDocument,
+  type MessageDeliveryStatus,
   type MessageView,
 } from "./conversation-types";
 import type {
@@ -38,6 +43,16 @@ import type {
 import type { TenantContext } from "./auth-types";
 import { getRequestViewer } from "./auth";
 import { requireTenantContext } from "./tenant-context";
+import {
+  configuredMessagingProvider,
+  sendProviderMessage,
+} from "./messaging-service";
+import {
+  MessagingProviderError,
+  type NormalizedIncomingMessage,
+  type ProviderMessageReceipt,
+} from "./messaging-provider";
+import { postmarkInboundReplyAddress } from "./postmark-messaging-provider";
 
 const MESSAGE_PREVIEW_LENGTH = 160;
 
@@ -47,8 +62,16 @@ async function contextForRequest(request: Request): Promise<TenantContext> {
 
 function isStatus(error: unknown, status: number): boolean {
   if (!error || typeof error !== "object") return false;
-  const candidate = error as { code?: number; statusCode?: number };
-  return candidate.code === status || candidate.statusCode === status;
+  const candidate = error as {
+    code?: number;
+    status?: number;
+    statusCode?: number;
+  };
+  return (
+    candidate.code === status ||
+    candidate.status === status ||
+    candidate.statusCode === status
+  );
 }
 
 function assertConversationDocument(
@@ -120,6 +143,21 @@ function toMessageView(
     deliveryStatus: document.deliveryStatus,
     createdAt: document.createdAt,
   };
+}
+
+function assertMessageDocument(
+  document: MessageDocument,
+  tenantId: string,
+  conversationId: string,
+): void {
+  if (
+    document.type !== "message" ||
+    document.schemaVersion !== CONVERSATION_SCHEMA_VERSION ||
+    document.tenantId !== tenantId ||
+    document.conversationId !== conversationId
+  ) {
+    throw new StorageError("Message data is invalid.", 503);
+  }
 }
 
 function channelIdentityId(channel: string, normalizedAddress: string): string {
@@ -239,14 +277,24 @@ async function requiredIdentity(
   return stored;
 }
 
+type InternalMessageInput = {
+  body: string;
+  direction: "INBOUND" | "OUTBOUND";
+  id?: string;
+  deliveryStatus?: MessageDeliveryStatus;
+  messagingProvider?: string;
+  externalMessageId?: string;
+  providerEventId?: string;
+};
+
 function buildMessage(
   context: TenantContext,
   conversation: ConversationDocument,
-  input: CreateMessageInput,
+  input: InternalMessageInput,
   createdAt: string,
 ): MessageDocument {
   return {
-    id: randomUUID(),
+    id: input.id ?? randomUUID(),
     tenantId: context.tenantId,
     conversationId: conversation.id,
     type: "message",
@@ -256,7 +304,15 @@ function buildMessage(
     channel: conversation.channel,
     body: input.body,
     deliveryStatus:
-      input.direction === "INBOUND" ? "RECEIVED" : "LOCAL_ONLY",
+      input.deliveryStatus ??
+      (input.direction === "INBOUND" ? "RECEIVED" : "LOCAL_ONLY"),
+    ...(input.messagingProvider
+      ? { messagingProvider: input.messagingProvider }
+      : {}),
+    ...(input.externalMessageId
+      ? { externalMessageId: input.externalMessageId }
+      : {}),
+    ...(input.providerEventId ? { providerEventId: input.providerEventId } : {}),
     createdAt,
   };
 }
@@ -264,7 +320,7 @@ function buildMessage(
 async function appendMessageForContext(
   context: TenantContext,
   conversationId: string,
-  input: CreateMessageInput,
+  input: InternalMessageInput,
 ): Promise<{ conversation: ConversationView; message: MessageView }> {
   const stored = await requiredConversation(context, conversationId);
   const createdAt = new Date().toISOString();
@@ -563,11 +619,384 @@ export async function addConversationMessage(
   conversationId: string,
   input: CreateMessageInput,
 ): Promise<{ conversation: ConversationView; message: MessageView }> {
-  return appendMessageForContext(
+  return addConversationMessageForContext(
     await contextForRequest(request),
     conversationId,
     input,
   );
+}
+
+export async function addConversationMessageForContext(
+  context: TenantContext,
+  conversationId: string,
+  input: CreateMessageInput,
+): Promise<{ conversation: ConversationView; message: MessageView }> {
+  const existing = await existingMessageMutation(
+    context,
+    conversationId,
+    input,
+  );
+  if (existing) return existing;
+
+  const provider = configuredMessagingProvider();
+  if (provider.simulated) {
+    return appendMessageForContext(context, conversationId, {
+      id: input.requestId,
+      body: input.body,
+      direction: "OUTBOUND",
+      deliveryStatus: "LOCAL_ONLY",
+    });
+  }
+
+  const storedConversation = await requiredConversation(context, conversationId);
+  if (storedConversation.document.channel !== "EMAIL") {
+    throw new StorageError(
+      "The configured messaging provider supports Email Conversations only.",
+      409,
+    );
+  }
+  const identity = await requiredIdentity(
+    context,
+    storedConversation.document.channelIdentityId,
+    conversationId,
+  );
+  const routedIdentity = await ensureInboundRoute(context, identity);
+  const pending = await appendMessageForContext(context, conversationId, {
+    id: input.requestId,
+    body: input.body,
+    direction: "OUTBOUND",
+    deliveryStatus: "PENDING",
+    messagingProvider: provider.provider,
+  });
+  const storedMessage = await readMessageDocument(
+    input.requestId,
+    context.tenantId,
+    conversationId,
+  );
+  if (!storedMessage) {
+    throw new StorageError("The pending Message could not be loaded.", 503);
+  }
+  const attemptedAt = new Date().toISOString();
+
+  let receipt: ProviderMessageReceipt;
+  try {
+    receipt = await sendProviderMessage(provider, {
+      tenantId: context.tenantId,
+      conversationId,
+      messageId: input.requestId,
+      channel: "EMAIL",
+      recipientAddress: routedIdentity.document.normalizedAddress,
+      subject: `Message from ${context.businessName}`.slice(0, 200),
+      replyAddress: postmarkInboundReplyAddress(
+        routedIdentity.document.inboundRouteKey!,
+      ),
+      body: input.body,
+      requestedAt: storedMessage.document.createdAt,
+    });
+  } catch (error) {
+    const failureCategory =
+      error instanceof MessagingProviderError ? error.category : "UNKNOWN";
+    try {
+      await replaceMessageDocument(
+        {
+          ...storedMessage.document,
+          deliveryStatus: "FAILED",
+          failureCategory,
+          providerAttemptedAt: attemptedAt,
+        },
+        storedMessage.etag,
+      );
+    } catch {
+      console.error(
+        JSON.stringify({
+          event: "conversation-message-failure-state-write-failed",
+          tenantId: context.tenantId,
+          conversationId,
+          messageId: input.requestId,
+        }),
+      );
+    }
+    logOutboundFailure(context, conversationId, input.requestId, error);
+    throw new StorageError(
+      "The Email could not be sent. The failed attempt remains visible in the Conversation.",
+      502,
+    );
+  }
+  let sent;
+  try {
+    sent = await replaceMessageDocument(
+      {
+        ...storedMessage.document,
+        deliveryStatus: "SENT",
+        messagingProvider: receipt.provider,
+        externalMessageId: receipt.externalMessageId,
+        providerAttemptedAt: attemptedAt,
+        sentAt: receipt.acceptedAt,
+      },
+      storedMessage.etag,
+    );
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: "conversation-message-acceptance-write-failed",
+        tenantId: context.tenantId,
+        conversationId,
+        messageId: input.requestId,
+        provider: receipt.provider,
+        externalMessageId: receipt.externalMessageId,
+      }),
+    );
+    throw new StorageError(
+      "The Email provider accepted the message, but its status could not be reconciled.",
+      503,
+    );
+  }
+  return {
+    conversation: pending.conversation,
+    message: toMessageView(sent.document, context, conversationId),
+  };
+}
+
+async function existingMessageMutation(
+  context: TenantContext,
+  conversationId: string,
+  input: CreateMessageInput,
+): Promise<{ conversation: ConversationView; message: MessageView } | null> {
+  const existing = await readMessageDocument(
+    input.requestId,
+    context.tenantId,
+    conversationId,
+  );
+  if (!existing) return null;
+  assertMessageDocument(existing.document, context.tenantId, conversationId);
+  if (
+    existing.document.direction !== "OUTBOUND" ||
+    existing.document.body !== input.body
+  ) {
+    throw new StorageError(
+      "The message request identifier is already in use.",
+      409,
+    );
+  }
+  const conversation = await requiredConversation(context, conversationId);
+  return {
+    conversation: toConversationView(conversation.document, context),
+    message: toMessageView(existing.document, context, conversationId),
+  };
+}
+
+async function ensureInboundRoute(
+  context: TenantContext,
+  stored: Awaited<ReturnType<typeof requiredIdentity>>,
+) {
+  if (stored.document.inboundRouteKey) return stored;
+  const updated: ChannelIdentityDocument = {
+    ...stored.document,
+    inboundRouteKey: randomToken(32),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    return await replaceChannelIdentity(updated, stored.etag);
+  } catch (error) {
+    if (!isStatus(error, 409) && !isStatus(error, 412)) throw error;
+    const current = await requiredIdentity(
+      context,
+      stored.document.id,
+      stored.document.conversationId,
+    );
+    if (!current.document.inboundRouteKey) {
+      throw new StorageError(
+        "The Conversation reply route changed. Refresh and retry.",
+        409,
+      );
+    }
+    return current;
+  }
+}
+
+function logOutboundFailure(
+  context: TenantContext,
+  conversationId: string,
+  messageId: string,
+  error: unknown,
+): void {
+  const details: Record<string, string | number> = {
+    event: "conversation-message-delivery-failed",
+    tenantId: context.tenantId,
+    conversationId,
+    messageId,
+    category:
+      error instanceof MessagingProviderError ? error.category : "UNKNOWN",
+  };
+  if (error instanceof MessagingProviderError) {
+    if (error.providerStatus !== undefined) {
+      details.providerStatus = error.providerStatus;
+    }
+    if (error.providerCode !== undefined) {
+      details.providerCode = error.providerCode;
+    }
+  }
+  console.error(JSON.stringify(details));
+}
+
+export type IncomingMessageOutcome = {
+  status: "PROCESSED" | "DUPLICATE" | "IGNORED";
+  conversationId?: string;
+  messageId?: string;
+};
+
+export async function processIncomingProviderMessage(
+  incoming: NormalizedIncomingMessage,
+): Promise<IncomingMessageOutcome> {
+  const identities = await queryChannelIdentitiesByInboundRoute(
+    incoming.providerRouteKey,
+  );
+  const routeDigest = createHash("sha256")
+    .update(incoming.providerRouteKey)
+    .digest("hex");
+  if (identities.length === 0) {
+    console.warn(
+      JSON.stringify({
+        event: "conversation-inbound-route-not-found",
+        provider: incoming.provider,
+        routeDigest,
+      }),
+    );
+    return { status: "IGNORED" };
+  }
+  if (identities.length !== 1) {
+    console.error(
+      JSON.stringify({
+        event: "conversation-inbound-route-ambiguous",
+        provider: incoming.provider,
+        routeDigest,
+      }),
+    );
+    throw new StorageError("The inbound Conversation route is ambiguous.", 503);
+  }
+  const identity = identities[0];
+  if (
+    identity.type !== "channel-identity" ||
+    identity.schemaVersion !== CONVERSATION_SCHEMA_VERSION ||
+    identity.channel !== incoming.channel ||
+    identity.inboundRouteKey !== incoming.providerRouteKey
+  ) {
+    throw new StorageError("Channel identity data is invalid.", 503);
+  }
+  if (identity.normalizedAddress !== incoming.senderAddress) {
+    console.warn(
+      JSON.stringify({
+        event: "conversation-inbound-sender-mismatch",
+        provider: incoming.provider,
+        tenantId: identity.tenantId,
+        conversationId: identity.conversationId,
+      }),
+    );
+    return { status: "IGNORED" };
+  }
+  const storedConversation = await readConversationDocument(
+    identity.conversationId,
+    identity.tenantId,
+  );
+  if (!storedConversation) {
+    throw new StorageError("Conversation data is unavailable.", 503);
+  }
+  if (
+    storedConversation.document.type !== "conversation" ||
+    storedConversation.document.schemaVersion !== CONVERSATION_SCHEMA_VERSION ||
+    storedConversation.document.tenantId !== identity.tenantId ||
+    storedConversation.document.channelIdentityId !== identity.id ||
+    storedConversation.document.channel !== incoming.channel
+  ) {
+    throw new StorageError("Conversation data is invalid.", 503);
+  }
+  const messageId = `provider_${createHash("sha256")
+    .update(`${incoming.provider}\n${incoming.externalMessageId}`)
+    .digest("hex")}`;
+  const duplicate = await readMessageDocument(
+    messageId,
+    identity.tenantId,
+    identity.conversationId,
+  );
+  if (duplicate) {
+    assertMessageDocument(
+      duplicate.document,
+      identity.tenantId,
+      identity.conversationId,
+    );
+    return {
+      status: "DUPLICATE",
+      conversationId: identity.conversationId,
+      messageId,
+    };
+  }
+  const message: MessageDocument = {
+    id: messageId,
+    tenantId: identity.tenantId,
+    conversationId: identity.conversationId,
+    type: "message",
+    schemaVersion: CONVERSATION_SCHEMA_VERSION,
+    customerId: storedConversation.document.customerId,
+    direction: "INBOUND",
+    channel: incoming.channel,
+    body: incoming.body,
+    deliveryStatus: "RECEIVED",
+    messagingProvider: incoming.provider,
+    externalMessageId: incoming.externalMessageId,
+    providerEventId: incoming.providerEventId,
+    createdAt: incoming.receivedAt,
+  };
+  const incomingIsLatest =
+    Date.parse(incoming.receivedAt) >=
+    Date.parse(storedConversation.document.lastMessageAt);
+  const updated: ConversationDocument = {
+    ...storedConversation.document,
+    messageCount: storedConversation.document.messageCount + 1,
+    ...(incomingIsLatest
+      ? {
+          lastMessagePreview: messagePreview(incoming.body),
+          lastMessageDirection: "INBOUND" as const,
+          lastMessageAt: incoming.receivedAt,
+        }
+      : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await commitConversationBatch(identity.tenantId, identity.conversationId, [
+      {
+        operationType: "Create",
+        resourceBody: message,
+        ifNoneMatch: "*",
+      },
+      {
+        operationType: "Replace",
+        id: updated.id,
+        resourceBody: updated,
+        ifMatch: storedConversation.etag,
+      },
+    ]);
+  } catch (error) {
+    if (isStatus(error, 409)) {
+      const raced = await readMessageDocument(
+        messageId,
+        identity.tenantId,
+        identity.conversationId,
+      );
+      if (raced) {
+        return {
+          status: "DUPLICATE",
+          conversationId: identity.conversationId,
+          messageId,
+        };
+      }
+    }
+    throw error;
+  }
+  return {
+    status: "PROCESSED",
+    conversationId: identity.conversationId,
+    messageId,
+  };
 }
 
 export async function linkConversationCustomer(

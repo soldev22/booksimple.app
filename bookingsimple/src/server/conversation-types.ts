@@ -14,7 +14,12 @@ export const COMMUNICATION_CHANNELS = [
 
 export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 export type MessageDirection = "INBOUND" | "OUTBOUND";
-export type MessageDeliveryStatus = "RECEIVED" | "LOCAL_ONLY";
+export type MessageDeliveryStatus =
+  | "RECEIVED"
+  | "LOCAL_ONLY"
+  | "PENDING"
+  | "SENT"
+  | "FAILED";
 
 export type ConversationDocument = ItemDefinition & {
   id: string;
@@ -48,6 +53,9 @@ export type MessageDocument = ItemDefinition & {
   messagingProvider?: string;
   externalMessageId?: string;
   providerEventId?: string;
+  failureCategory?: string;
+  providerAttemptedAt?: string;
+  sentAt?: string;
   createdAt: string;
 };
 
@@ -60,6 +68,7 @@ export type ChannelIdentityDocument = ItemDefinition & {
   normalizedAddress: string;
   displayLabel: string;
   conversationId: string;
+  inboundRouteKey?: string;
   customerId?: string;
   createdAt: string;
   updatedAt: string;
