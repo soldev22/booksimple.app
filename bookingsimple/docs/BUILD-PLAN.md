@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: IN PROGRESS — TWILIO SMS COMPLETE; WHATSAPP IMPLEMENTED, LIVE VALIDATION PENDING
+Status: IN PROGRESS — TWILIO SMS COMPLETE; WHATSAPP OUTBOUND LIVE VERIFIED, INBOUND PENDING
 
 ## Objective
 
@@ -1577,7 +1577,14 @@ accepted the displayed WhatsApp/Meta third-party terms and activated the
 Twilio Sandbox. Its incoming-message HTTP POST webhook is now
 `https://www.booksimple.app/api/webhooks/twilio/whatsapp`; a full console page
 reload confirmed that the setting persisted. A joined test device and live
-inbound/outbound delivery proof remain pending.
+delivery proof initially remained pending.
+
+The test device subsequently joined the Sandbox successfully. Production
+Cosmos evidence confirms two provider-backed WhatsApp sends were accepted by
+Twilio and persisted as `OUTBOUND` / `SENT` with real Twilio Message SIDs. No
+provider-backed `INBOUND` / `RECEIVED` WhatsApp Message has yet been persisted,
+so signed inbound delivery remains the final acceptance gate before beginning
+the separate Facebook / Meta increment.
 
 ---
 
