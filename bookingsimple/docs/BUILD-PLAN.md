@@ -1519,6 +1519,9 @@ simulated incoming messages and channels without connected providers retain
 their existing local behavior. A second live attempt confirmed the form still
 defaulted to simulated incoming, so the production-safe default is now
 `Send outgoing message`; incoming simulation requires an explicit selection.
+The existing Conversation reply form was also updated from its prior
+Email-only gate so SMS replies use Twilio and unsupported channels remain
+disabled.
 
 Production completion remains pending until a real carrier-delivered incoming
 SMS and an outgoing Inbox reply are proven with persisted Message evidence. Do

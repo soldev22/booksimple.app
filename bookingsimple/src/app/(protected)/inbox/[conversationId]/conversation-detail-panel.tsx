@@ -97,6 +97,8 @@ export function ConversationDetailPanel({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const { conversation, resolution } = details;
+  const canSendExternally =
+    conversation.channel === "EMAIL" || conversation.channel === "SMS";
 
   async function refreshDetails() {
     const value = await conversationApi(
@@ -341,7 +343,7 @@ export function ConversationDetailPanel({
             <label className="account-field">
               <span>Message</span>
               <textarea
-                disabled={Boolean(busy)}
+                disabled={Boolean(busy) || !canSendExternally}
                 maxLength={4000}
                 name="body"
                 required
@@ -351,14 +353,20 @@ export function ConversationDetailPanel({
             <p className="conversation-local-note">
               {conversation.channel === "EMAIL"
                 ? "Replies use Postmark Email. Provider failures remain visible in this Conversation."
-                : "Only Email is connected in this stage. This channel cannot be sent externally."}
+                : conversation.channel === "SMS"
+                  ? "Replies use Twilio SMS. Provider failures remain visible in this Conversation."
+                  : "This channel cannot be sent externally until its provider is connected."}
             </p>
             <button
               className="account-button"
-              disabled={Boolean(busy) || conversation.channel !== "EMAIL"}
+              disabled={Boolean(busy) || !canSendExternally}
               type="submit"
             >
-              {busy === "message" ? "Sending..." : "Send Email"}
+              {busy === "message"
+                ? "Sending..."
+                : conversation.channel === "SMS"
+                  ? "Send SMS"
+                  : "Send Email"}
             </button>
           </form>
         </section>
