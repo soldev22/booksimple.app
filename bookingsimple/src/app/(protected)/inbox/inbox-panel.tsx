@@ -157,7 +157,14 @@ export function InboxPanel() {
               name="contactValue"
               placeholder={contactPlaceholder(channel)}
               required
+              type={channel === "SMS" || channel === "WHATSAPP" ? "tel" : "text"}
             />
+            {channel === "SMS" && (
+              <small>
+                Use international format with a leading + and country code,
+                for example +44 7700 900123.
+              </small>
+            )}
           </label>
           <label className="account-field">
             <span>Display name (optional)</span>

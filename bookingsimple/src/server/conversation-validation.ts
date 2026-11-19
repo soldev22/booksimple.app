@@ -22,9 +22,8 @@ function normalizeContact(
 
 function validContact(channel: CommunicationChannel, value: string): boolean {
   if (channel === "EMAIL") return z.email().safeParse(value).success;
-  if (channel === "SMS" || channel === "WHATSAPP") {
-    return /^\+?\d{7,15}$/.test(value);
-  }
+  if (channel === "SMS") return /^\+\d{7,15}$/.test(value);
+  if (channel === "WHATSAPP") return /^\+?\d{7,15}$/.test(value);
   return value.length >= 1 && value.length <= 254;
 }
 

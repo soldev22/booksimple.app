@@ -1522,6 +1522,10 @@ defaulted to simulated incoming, so the production-safe default is now
 The existing Conversation reply form was also updated from its prior
 Email-only gate so SMS replies use Twilio and unsupported channels remain
 disabled.
+Live testing also confirmed that local-format SMS recipients can pass generic
+contact normalization but cannot be sent by Twilio. New SMS Conversations now
+require an international E.164 address with a leading `+` and country code,
+and the Inbox explains that format before submission.
 
 Production completion remains pending until a real carrier-delivered incoming
 SMS and an outgoing Inbox reply are proven with persisted Message evidence. Do
