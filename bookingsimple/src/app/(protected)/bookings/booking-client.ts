@@ -33,6 +33,17 @@ export function isBooking(value: unknown): value is BookingView {
     typeof value.serviceName === "string" &&
     "serviceActive" in value &&
     typeof value.serviceActive === "boolean" &&
+    ((![
+      "staffUserId",
+      "staffName",
+      "staffUsername",
+    ].some((field) => field in value)) ||
+      ("staffUserId" in value &&
+        typeof value.staffUserId === "string" &&
+        "staffName" in value &&
+        typeof value.staffName === "string" &&
+        "staffUsername" in value &&
+        typeof value.staffUsername === "string")) &&
     (!("conversationId" in value) ||
       typeof value.conversationId === "string") &&
     "startAt" in value &&

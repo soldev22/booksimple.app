@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountShell } from "@/app/components/account-shell";
 import { getViewer } from "@/server/auth";
@@ -41,8 +42,14 @@ export default async function BookingsPage({
       viewer={viewer}
       wide
     >
+      <div className="booking-page-actions">
+        <Link className="dashboard-action-link" href="/bookings/calendar">
+          Open Calendar
+        </Link>
+      </div>
       <BookingsPanel
         canManageServices={viewer.tenant.role === "company_admin"}
+        canManageStaff={viewer.tenant.role === "company_admin"}
         initialConversationId={conversationId}
         initialCustomerId={customerId}
       />

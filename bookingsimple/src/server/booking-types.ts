@@ -22,6 +22,9 @@ export type BookingDocument = ItemDefinition & {
   schemaVersion: typeof BOOKING_SCHEMA_VERSION;
   customerId: string;
   serviceId: string;
+  staffUserId?: string;
+  staffName?: string;
+  staffUsername?: string;
   conversationId?: string;
   startAt: string;
   endAt: string;
@@ -49,6 +52,9 @@ export type BookingView = {
   serviceId: string;
   serviceName: string;
   serviceActive: boolean;
+  staffUserId?: string;
+  staffName?: string;
+  staffUsername?: string;
   conversationId?: string;
   startAt: string;
   endAt: string;

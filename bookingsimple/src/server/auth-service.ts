@@ -57,7 +57,12 @@ import {
   type BusinessDocument,
   type BusinessInvitationDocument,
 } from "./business-types";
-import type { BusinessView, UserView, Viewer } from "./auth-types";
+import type {
+  BusinessView,
+  TenantContext,
+  UserView,
+  Viewer,
+} from "./auth-types";
 import type { AuthAction } from "./auth-validation";
 import {
   assertTenantAccess,
@@ -1184,6 +1189,31 @@ type UserManagementScope = {
   platformAdmin: boolean;
   tenantId?: string;
 };
+
+export async function getTenantStaffSnapshot(
+  context: TenantContext,
+  userId: string,
+): Promise<{
+  staffUserId: string;
+  staffName: string;
+  staffUsername: string;
+}> {
+  const target = await findUserById(userId);
+  const membership = target?.document.membership;
+  if (
+    !target ||
+    target.document.status !== "active" ||
+    target.document.platformAdmin ||
+    membership?.tenantId !== context.tenantId
+  ) {
+    throw authError(404, "The active Staff member was not found.");
+  }
+  return {
+    staffUserId: target.document.userId,
+    staffName: target.document.name,
+    staffUsername: membership.username,
+  };
+}
 
 async function startUserManagementAction(
   request: Request,

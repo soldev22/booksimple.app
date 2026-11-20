@@ -6,6 +6,40 @@ type DateTimeParts = {
   minute: number;
 };
 
+export type BookingCalendarView = "day" | "week" | "month";
+
+export type BookingCalendarRange = {
+  startAt: string;
+  endAt: string;
+  localDates: string[];
+};
+
+function parseLocalDate(localDate: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+    throw new Error("Calendar date must use YYYY-MM-DD.");
+  }
+  const [year, month, day] = localDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error("Calendar date is invalid.");
+  }
+  return date;
+}
+
+function formatLocalDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addLocalDays(localDate: string, days: number): string {
+  const date = parseLocalDate(localDate);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatLocalDate(date);
+}
+
 function partsInTimeZone(timestamp: number, timeZone: string): DateTimeParts {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -140,4 +174,39 @@ export function utcToLocalDateTime(isoDate: string, timeZone: string): string {
     ":",
     String(parts.minute).padStart(2, "0"),
   ].join("");
+}
+
+export function bookingCalendarRange(
+  localDate: string,
+  view: BookingCalendarView,
+  timeZone: string,
+): BookingCalendarRange {
+  const selected = parseLocalDate(localDate);
+  let startDate = localDate;
+  let dayCount = 1;
+
+  if (view === "week") {
+    const daysSinceMonday = (selected.getUTCDay() + 6) % 7;
+    startDate = addLocalDays(localDate, -daysSinceMonday);
+    dayCount = 7;
+  } else if (view === "month") {
+    startDate = formatLocalDate(
+      new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth(), 1)),
+    );
+    dayCount = new Date(
+      Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+  } else if (view !== "day") {
+    throw new Error("Calendar view is invalid.");
+  }
+
+  const localDates = Array.from({ length: dayCount }, (_, index) =>
+    addLocalDays(startDate, index),
+  );
+  const endDate = addLocalDays(startDate, dayCount);
+  return {
+    startAt: localDateTimeToUtc(`${startDate}T00:00`, timeZone),
+    endAt: localDateTimeToUtc(`${endDate}T00:00`, timeZone),
+    localDates,
+  };
 }

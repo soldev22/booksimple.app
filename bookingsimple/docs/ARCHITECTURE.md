@@ -326,6 +326,13 @@ The workspace sidebar and Booking pages expose Service-management links only to
 company administrators. Company users can still select tenant-owned active
 Services while creating or editing Bookings.
 
+The Booking calendar is available to every active company user at
+`/bookings/calendar`. Its Day, Week and Month views query only the authenticated
+tenant partition with a validated maximum 32-day UTC range derived from the
+Business timezone. Calendar paging is followed until every Booking in the
+selected period is displayed. Booking cards show the snapshotted Service and
+assigned Staff name, or explicitly report the Booking as unassigned.
+
 Service names are not globally unique. Separate businesses can independently
 create identically named Services, but tenant partitioning and authorization
 prevent either business from listing or accessing the other's records.
@@ -384,8 +391,14 @@ timezone snapshot used for display. Status is explicit: `PENDING`,
 Cancellation retains the record, and completed, cancelled and no-show details
 are immutable. ETags protect all edits and status replacements.
 
-Stage 9 deliberately excludes availability conflict detection, staff/resource
-assignment, locations, notes, recurrence and payments.
+Company memberships are the Staff identity source; no duplicate Staff container
+is introduced. Company administrators manage their tenant's Staff accounts
+through the tenant-scoped user directory, while platform administrators retain
+their separately authorized cross-company user controls. A Booking can snapshot
+an assigned active same-tenant user's ID, registered name and company username.
+Only a company administrator can set, change or clear that assignment. Existing
+Bookings remain valid and explicitly display as unassigned. Availability
+conflict detection, resources, locations, notes and recurrence remain excluded.
 
 ## Implemented Deposit Engine
 

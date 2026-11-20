@@ -386,9 +386,12 @@ Bookings are durable business records and have no default TTL.
   "id": "booking-guid",
   "tenantId": "business-guid",
   "type": "booking",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "customerId": "customer-guid",
   "serviceId": "service-guid",
+  "staffUserId": "optional-active-company-user-guid",
+  "staffName": "optional-registered-name-snapshot",
+  "staffUsername": "optional-company-username-snapshot",
   "conversationId": "optional-conversation-guid",
   "startAt": "2026-11-20T14:30:00.000Z",
   "endAt": "2026-11-20T15:30:00.000Z",
@@ -413,6 +416,9 @@ Booking decisions:
   reads. Cosmos does not enforce foreign keys.
 - `conversationId` is optional and records the tenant-owned Conversation from
   which a Booking was created.
+- `staffUserId`, `staffName` and `staffUsername` are either all absent or
+  snapshot one active company member assigned by a company administrator.
+  Existing and deliberately unassigned Bookings omit all three fields.
 - `startAt` and `endAt` are UTC ISO instants. `timeZone` preserves the tenant
   timezone used to interpret and display the local booking time.
 - `durationMinutes`, `totalAmountMinor` and `currency` are copied from the
@@ -435,8 +441,8 @@ Booking decisions:
   user who can manage Bookings may set or clear an individual override.
 - Cancellation changes status to `CANCELLED`; Bookings are not physically
   deleted.
-- Deposit policy, payment state, assigned staff, resources, locations, notes,
-  recurrence and availability conflict detection are not part of Stage 9.
+- Payment state, resources, locations, notes, recurrence and availability
+  conflict detection are not stored on the Booking.
 - Booking records contain Customer and Conversation references but do not copy
   Customer names, email addresses, phone numbers or message content.
 
@@ -450,6 +456,7 @@ Booking decisions:
 | Create or update a Booking | One `tenantId` partition after same-tenant reference checks |
 | Cancel or change status | ETag-protected replacement in one `tenantId` partition |
 | Override Booking deposit | ETag-protected replacement with authenticated user attribution |
+| Assign or clear Staff | Company-administrator-only ETag-protected replacement after active same-tenant membership validation |
 | Create from a Conversation | Full Conversation key plus same-tenant Customer validation |
 | Platform-wide Booking search | Not part of Stage 9 |
 

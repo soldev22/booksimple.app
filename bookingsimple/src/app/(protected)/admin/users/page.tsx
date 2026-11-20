@@ -13,11 +13,11 @@ export default async function PlatformUsersPage() {
 
   return (
     <AccountShell
-      title={viewer.user.platformAdmin ? "Users by company" : "Company users"}
+      title={viewer.user.platformAdmin ? "Users by company" : "Staff"}
       description={
         viewer.user.platformAdmin
           ? "Manage registered users and companies."
-          : `Manage users and company roles for ${viewer.tenant?.businessName}.`
+          : `Manage Staff accounts and company roles for ${viewer.tenant?.businessName}.`
       }
       viewer={viewer}
       wide

@@ -210,11 +210,17 @@ export default async function Home() {
   }
   const { tenant } = viewer;
   const operational = await getOperationalDashboard(tenant);
-  const dashboardMetrics = [
+  const dashboardMetrics: {
+    label: string;
+    value: number;
+    detail: string;
+    href?: string;
+  }[] = [
     {
       label: "Today's bookings",
       value: operational.todayCount,
       detail: "Scheduled today, excluding cancellations",
+      href: "/bookings/calendar",
     },
     {
       label: "Upcoming bookings",
@@ -257,18 +263,34 @@ export default async function Home() {
           </div>
 
           <section aria-label="Workspace overview" className="metrics-grid">
-            {dashboardMetrics.map((metric) => (
-              <article className="metric-card" key={metric.label}>
-                <div className="metric-card-heading">
-                  <h2>{metric.label}</h2>
-                  <span aria-hidden="true" className="metric-indicator">
-                    —
-                  </span>
-                </div>
-                <p className="metric-value">{metric.value}</p>
-                <p className="metric-detail">{metric.detail}</p>
-              </article>
-            ))}
+            {dashboardMetrics.map((metric) => {
+              const content = (
+                <>
+                  <div className="metric-card-heading">
+                    <h2>{metric.label}</h2>
+                    <span aria-hidden="true" className="metric-indicator">
+                      —
+                    </span>
+                  </div>
+                  <p className="metric-value">{metric.value}</p>
+                  <p className="metric-detail">{metric.detail}</p>
+                </>
+              );
+              return metric.href ? (
+                <Link
+                  aria-label={`Open ${metric.label}`}
+                  className="metric-card metric-card-link"
+                  href={metric.href}
+                  key={metric.label}
+                >
+                  {content}
+                </Link>
+              ) : (
+                <article className="metric-card" key={metric.label}>
+                  {content}
+                </article>
+              );
+            })}
           </section>
 
           <section
@@ -281,8 +303,11 @@ export default async function Home() {
                   <p className="eyebrow">TODAY</p>
                   <h2>Today&apos;s Bookings</h2>
                 </div>
-                <Link className="dashboard-action-link" href="/bookings">
-                  All Bookings
+                <Link
+                  className="dashboard-action-link"
+                  href="/bookings/calendar"
+                >
+                  Open Calendar
                 </Link>
               </div>
               <BookingItems

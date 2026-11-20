@@ -37,6 +37,7 @@ import {
   parseReminderList,
   reminderApi,
 } from "../reminder-client";
+import { loadStaffChoices, type StaffChoice } from "../staff-client";
 
 const terminalStatuses: BookingStatus[] = [
   "COMPLETED",
@@ -53,16 +54,19 @@ function statusLabel(status: BookingStatus): string {
 
 export function BookingDetailPanel({
   canManageServices,
+  canManageStaff,
   initialBooking,
   initialPayments,
 }: {
   canManageServices: boolean;
+  canManageStaff: boolean;
   initialBooking: BookingView;
   initialPayments: PaymentView[];
 }) {
   const [booking, setBooking] = useState(initialBooking);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [services, setServices] = useState<ServiceView[]>([]);
+  const [staff, setStaff] = useState<StaffChoice[]>([]);
   const [payments, setPayments] = useState(initialPayments);
   const [reminders, setReminders] = useState<ReminderView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -123,6 +127,23 @@ export function BookingDetailPanel({
       active = false;
     };
   }, [booking.customerId, booking.serviceId]);
+
+  useEffect(() => {
+    if (!canManageStaff) return;
+    const controller = new AbortController();
+    loadStaffChoices(controller.signal)
+      .then(setStaff)
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Staff choices could not be loaded.",
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [canManageStaff]);
 
   useEffect(() => {
     let active = true;
@@ -187,6 +208,9 @@ export function BookingDetailPanel({
         customerId: values.customerId,
         serviceId: values.serviceId,
         startLocal: values.startLocal,
+        ...(canManageStaff
+          ? { staffUserId: values.staffUserId || null }
+          : {}),
       });
       await refreshBookingPaymentsAndReminders();
       setMessage("Booking details updated.");
@@ -358,6 +382,10 @@ export function BookingDetailPanel({
           <div>
             <dt>Duration</dt>
             <dd>{booking.durationMinutes} minutes</dd>
+          </div>
+          <div>
+            <dt>Staff</dt>
+            <dd>{booking.staffName ?? "Unassigned"}</dd>
           </div>
           <div>
             <dt>Amount</dt>
@@ -810,6 +838,29 @@ export function BookingDetailPanel({
                 />
               )}
             </label>
+            {canManageStaff && (
+              <label className="account-field">
+                <span>Staff member</span>
+                <select
+                  defaultValue={booking.staffUserId ?? ""}
+                  disabled={busy}
+                  name="staffUserId"
+                >
+                  <option value="">Unassigned</option>
+                  {staff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} ({member.username})
+                    </option>
+                  ))}
+                  {booking.staffUserId &&
+                    !staff.some((member) => member.id === booking.staffUserId) && (
+                      <option value={booking.staffUserId}>
+                        {booking.staffName ?? booking.staffUsername}
+                      </option>
+                    )}
+                </select>
+              </label>
+            )}
             <label className="account-field">
               <span>Service</span>
               <select

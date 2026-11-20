@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { getRequestViewer } from "./auth";
+import { getTenantStaffSnapshot } from "./auth-service";
 import {
   controlContainer,
   isConflict,
@@ -17,7 +18,11 @@ import {
   replaceBookingDocument,
 } from "./booking-storage";
 import { ensureBookingConfirmation } from "./booking-confirmation-service";
-import { isTimeZone, localDateTimeToUtc } from "./booking-time";
+import {
+  isTimeZone,
+  localDateTimeToUtc,
+  utcToLocalDateTime,
+} from "./booking-time";
 import {
   BOOKING_SCHEMA_VERSION,
   BOOKING_STATUSES,
@@ -50,7 +55,7 @@ import {
   deleteBookingReminders,
   rescheduleBookingReminders,
 } from "./reminder-service";
-import { requireTenantContext } from "./tenant-context";
+import { requireCompanyAdmin, requireTenantContext } from "./tenant-context";
 
 const NON_EDITABLE_STATUSES: BookingStatus[] = [
   "COMPLETED",
@@ -80,6 +85,12 @@ function isBookingDocument(
     document.schemaVersion === BOOKING_SCHEMA_VERSION &&
     typeof document.customerId === "string" &&
     typeof document.serviceId === "string" &&
+    ((document.staffUserId === undefined &&
+      document.staffName === undefined &&
+      document.staffUsername === undefined) ||
+      (typeof document.staffUserId === "string" &&
+        typeof document.staffName === "string" &&
+        typeof document.staffUsername === "string")) &&
     (document.conversationId === undefined ||
       typeof document.conversationId === "string") &&
     Number.isFinite(startAt) &&
@@ -203,6 +214,9 @@ async function toBookingView(
     serviceId: document.serviceId,
     serviceName: service.name,
     serviceActive: service.active,
+    staffUserId: document.staffUserId,
+    staffName: document.staffName,
+    staffUsername: document.staffUsername,
     conversationId: document.conversationId,
     startAt: document.startAt,
     endAt: document.endAt,
@@ -270,9 +284,17 @@ export async function listBookingsForContext(
     filters.push("c.customerId = @customerId");
     parameters.push({ name: "@customerId", value: input.customerId });
   }
+  if (input.startAtFrom && input.startAtTo) {
+    filters.push("c.startAt >= @startAtFrom", "c.startAt < @startAtTo");
+    parameters.push(
+      { name: "@startAtFrom", value: input.startAtFrom },
+      { name: "@startAtTo", value: input.startAtTo },
+    );
+  }
+  const order = input.startAtFrom ? "ASC" : "DESC";
   const result = await queryBookingPage(
     context.tenantId,
-    `SELECT * FROM c WHERE ${filters.join(" AND ")} ORDER BY c.startAt DESC`,
+    `SELECT * FROM c WHERE ${filters.join(" AND ")} ORDER BY c.startAt ${order}`,
     parameters,
     input.continuationToken,
     input.pageSize,
@@ -291,6 +313,17 @@ export async function listBookingsForContext(
     ),
     timeZone,
     continuationToken: result.continuationToken,
+  };
+}
+
+export async function getBookingCalendarContext(
+  context: TenantContext,
+  now = new Date(),
+): Promise<{ localDate: string; timeZone: string }> {
+  const timeZone = businessTimeZone(await bookingBusiness(context));
+  return {
+    localDate: utcToLocalDateTime(now.toISOString(), timeZone).slice(0, 10),
+    timeZone,
   };
 }
 
@@ -321,7 +354,8 @@ export async function createBooking(
   input: BookingMutationInput,
 ): Promise<BookingView> {
   const context = await contextForRequest(request);
-  const [customer, service, business] = await Promise.all([
+  if (input.staffUserId) requireCompanyAdmin(context);
+  const [customer, service, business, , staff] = await Promise.all([
     getCustomer(context, input.customerId),
     getService(context, input.serviceId),
     bookingBusiness(context),
@@ -330,6 +364,9 @@ export async function createBooking(
       input.conversationId,
       input.customerId,
     ),
+    input.staffUserId
+      ? getTenantStaffSnapshot(context, input.staffUserId)
+      : undefined,
   ]);
   const timeZone = businessTimeZone(business);
   const defaultDepositPercentage = businessDepositPercentage(business);
@@ -348,6 +385,7 @@ export async function createBooking(
     schemaVersion: BOOKING_SCHEMA_VERSION,
     customerId: input.customerId,
     serviceId: input.serviceId,
+    ...(staff ?? {}),
     conversationId: input.conversationId,
     startAt,
     endAt: endAtFromStart(startAt, service.durationMinutes),
@@ -396,6 +434,8 @@ export async function updateBooking(
   input: BookingUpdateInput,
 ): Promise<BookingView> {
   const context = await contextForRequest(request);
+  const staffChangeRequested = input.staffUserId !== undefined;
+  if (staffChangeRequested) requireCompanyAdmin(context);
   const current = await readOwnedBooking(context, id);
   if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
     throw bookingError(
@@ -403,9 +443,12 @@ export async function updateBooking(
       "Completed, cancelled and no-show Bookings cannot be edited.",
     );
   }
-  const [customer, service] = await Promise.all([
+  const [customer, service, staff] = await Promise.all([
     getCustomer(context, input.customerId),
     getService(context, input.serviceId),
+    typeof input.staffUserId === "string"
+      ? getTenantStaffSnapshot(context, input.staffUserId)
+      : undefined,
   ]);
   if (
     input.customerId !== current.document.customerId &&
@@ -457,6 +500,13 @@ export async function updateBooking(
     ...current.document,
     customerId: input.customerId,
     serviceId: input.serviceId,
+    ...(staffChangeRequested
+      ? staff ?? {
+          staffUserId: undefined,
+          staffName: undefined,
+          staffUsername: undefined,
+        }
+      : {}),
     startAt,
     endAt: endAtFromStart(startAt, durationMinutes),
     durationMinutes,

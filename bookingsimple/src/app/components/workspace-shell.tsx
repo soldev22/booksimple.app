@@ -220,7 +220,7 @@ export function WorkspaceShell({
     ...(canManageCompanyUsers || platformAdmin
       ? [
           {
-            label: platformAdmin ? "Users and companies" : "Company users",
+            label: platformAdmin ? "Users and companies" : "Staff",
             icon: "users" as const,
             href: "/admin/users",
             match: (path: string) =>

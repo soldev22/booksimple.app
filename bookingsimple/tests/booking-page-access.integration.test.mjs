@@ -204,6 +204,10 @@ test(
         "/login",
       );
       assert.equal((await request("/bookings", sessionA.token)).status, 200);
+      assert.equal(
+        (await request("/bookings/calendar", sessionA.token)).status,
+        200,
+      );
 
       const customerA = await createCustomer(sessionA.token, tenantA, {
         name: "Booking Customer A",
@@ -276,10 +280,11 @@ test(
       conversationIds.get(tenantA).add(conversation.id);
       assert.equal(conversation.customerId, customerA.id);
 
-      const createdA = await createBooking(sessionA.token, tenantA, {
+      const createdA = await createBooking(serviceAdminSessionA.token, tenantA, {
         customerId: customerA.id,
         serviceId: serviceA.id,
         conversationId: conversation.id,
+        staffUserId: serviceAdminA.userId,
         startLocal: "2026-12-01T10:00",
       });
       const bookingA = createdA.booking;
@@ -295,6 +300,25 @@ test(
       assert.equal(bookingA.depositOverridden, false);
       assert.equal(bookingA.status, "PENDING");
       assert.equal(bookingA.conversationId, conversation.id);
+      assert.equal(bookingA.staffUserId, serviceAdminA.userId);
+      assert.equal(bookingA.staffName, serviceAdminA.name);
+      assert.equal(
+        bookingA.staffUsername,
+        serviceAdminA.membership.username,
+      );
+
+      const unauthorizedStaffAssignment = await createBooking(
+        sessionA.token,
+        tenantA,
+        {
+          customerId: otherCustomerA.id,
+          serviceId: serviceA.id,
+          staffUserId: userA.userId,
+          startLocal: "2026-12-03T10:00",
+        },
+        403,
+      );
+      assert.match(unauthorizedStaffAssignment.error, /administrator/i);
       const reminderResponseA = await request(
         `/api/reminders?bookingId=${bookingA.id}`,
         sessionA.token,

@@ -1679,6 +1679,13 @@ Implemented:
   due failed Reminders,
 - bounded operational lists link staff directly to the relevant Booking or
   Conversation and use the Business timezone for daily boundaries and display,
+- the Today's Bookings metric links to a tenant-scoped Booking calendar
+  with Day, Week and Month views; each period lists every paged Booking with
+  its Service and assigned Staff member or explicitly reports it as unassigned,
+- company memberships provide the Staff identity source without a duplicate
+  Staff store; company administrators manage Staff accounts and control
+  same-tenant Booking assignment, while platform administrators retain their
+  separate audited cross-company user-management boundary,
 - the dashboard queries dedicated tenant partitions for Bookings and Reminders;
   the hierarchical Conversation query includes an explicit tenant predicate
   and cannot aggregate another Business's records,

@@ -14,6 +14,7 @@ const bookingMutationSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
     conversationId: optionalId,
+    staffUserId: optionalId,
   })
   .strict();
 
@@ -24,6 +25,7 @@ const bookingUpdateSchema = z
     startLocal: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
+    staffUserId: z.union([z.uuid(), z.null()]).optional(),
   })
   .strict();
 
@@ -47,8 +49,31 @@ const bookingListSchema = z
     customerId: optionalId,
     continuationToken: z.string().max(8_192).optional(),
     pageSize: z.coerce.number().int().min(1).max(100).default(50),
+    startAtFrom: z.string().datetime({ offset: true }).optional(),
+    startAtTo: z.string().datetime({ offset: true }).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    if (Boolean(input.startAtFrom) !== Boolean(input.startAtTo)) {
+      context.addIssue({
+        code: "custom",
+        message: "Both Booking range boundaries are required.",
+      });
+      return;
+    }
+    if (!input.startAtFrom || !input.startAtTo) return;
+    const rangeMilliseconds =
+      Date.parse(input.startAtTo) - Date.parse(input.startAtFrom);
+    if (
+      rangeMilliseconds <= 0 ||
+      rangeMilliseconds > 32 * 24 * 60 * 60 * 1_000
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Booking ranges must be positive and no longer than 32 days.",
+      });
+    }
+  });
 
 const bookingIdSchema = z.uuid();
 
@@ -88,6 +113,8 @@ export function parseBookingListInput(
     customerId: searchParams.get("customerId") ?? undefined,
     continuationToken: searchParams.get("continuationToken") ?? undefined,
     pageSize: searchParams.get("pageSize") ?? undefined,
+    startAtFrom: searchParams.get("startAtFrom") ?? undefined,
+    startAtTo: searchParams.get("startAtTo") ?? undefined,
   });
 }
 

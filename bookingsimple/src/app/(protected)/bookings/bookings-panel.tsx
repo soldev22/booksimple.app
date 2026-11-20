@@ -24,6 +24,7 @@ import {
   parseBookingPage,
   parseBookingResponse,
 } from "./booking-client";
+import { loadStaffChoices, type StaffChoice } from "./staff-client";
 
 const statusOptions: { value: BookingStatus | "all"; label: string }[] = [
   { value: "all", label: "All statuses" },
@@ -45,10 +46,12 @@ function displayDate(isoDate: string, timeZone: string): string {
 
 export function BookingsPanel({
   canManageServices,
+  canManageStaff,
   initialCustomerId,
   initialConversationId,
 }: {
   canManageServices: boolean;
+  canManageStaff: boolean;
   initialCustomerId?: string;
   initialConversationId?: string;
 }) {
@@ -56,6 +59,7 @@ export function BookingsPanel({
   const [bookings, setBookings] = useState<BookingView[]>([]);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [services, setServices] = useState<ServiceView[]>([]);
+  const [staff, setStaff] = useState<StaffChoice[]>([]);
   const [suggestedInstant] = useState(() => {
     const nextHour = new Date(Date.now() + 3_600_000);
     nextHour.setUTCMinutes(0, 0, 0);
@@ -98,6 +102,23 @@ export function BookingsPanel({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!canManageStaff) return;
+    const controller = new AbortController();
+    loadStaffChoices(controller.signal)
+      .then(setStaff)
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Staff choices could not be loaded.",
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [canManageStaff]);
 
   useEffect(() => {
     let active = true;
@@ -143,6 +164,9 @@ export function BookingsPanel({
           customerId: values.customerId,
           serviceId: values.serviceId,
           startLocal: values.startLocal,
+          ...(canManageStaff && values.staffUserId
+            ? { staffUserId: values.staffUserId }
+            : {}),
           conversationId: hasConversationContext
             ? initialConversationId
             : "",
@@ -251,6 +275,19 @@ export function BookingsPanel({
                 />
               )}
             </label>
+            {canManageStaff && (
+              <label className="account-field">
+                <span>Staff member</span>
+                <select disabled={busy} name="staffUserId">
+                  <option value="">Unassigned</option>
+                  {staff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} ({member.username})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="account-field">
               <span>Service</span>
               <select disabled={busy} name="serviceId" required>
@@ -335,6 +372,7 @@ export function BookingsPanel({
                   <th scope="col">Start</th>
                   <th scope="col">Customer</th>
                   <th scope="col">Service</th>
+                  <th scope="col">Staff</th>
                   <th scope="col">Amount</th>
                   <th scope="col">Status</th>
                   <th scope="col">Action</th>
@@ -346,6 +384,7 @@ export function BookingsPanel({
                     <td>{displayDate(booking.startAt, booking.timeZone)}</td>
                     <th scope="row">{booking.customerName}</th>
                     <td>{booking.serviceName}</td>
+                    <td>{booking.staffName ?? "Unassigned"}</td>
                     <td>
                       {formatMinorAmount(
                         booking.totalAmountMinor,
