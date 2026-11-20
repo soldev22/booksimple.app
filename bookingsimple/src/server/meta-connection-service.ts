@@ -465,7 +465,6 @@ export async function completeMetaOAuthConnection(
 ): Promise<MetaOAuthCompletion> {
   const callback = parseMetaOAuthCallback(new URL(request.url));
   const stored = await requiredOAuthState(callback.state);
-  await requireStateViewer(request, stored.document);
   if (stored.document.status !== "PENDING") {
     throw metaError(409, "Meta connection state was already used.");
   }

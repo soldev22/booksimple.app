@@ -256,7 +256,7 @@ test(
         `?state=${state}&code=authorization-code`;
       assert.deepEqual(
         await completeMetaOAuthConnection(
-          request(adminSession.token, callbackUrl),
+          new Request(callbackUrl),
         ),
         { outcome: "SELECT_PAGE", state },
       );
@@ -289,7 +289,7 @@ test(
         `https://www.booksimple.app/api/meta/connect/oauth/callback` +
         `?state=${reconnectState}&code=reconnect-authorization-code`;
       await completeMetaOAuthConnection(
-        request(adminSession.token, reconnectCallbackUrl),
+        new Request(reconnectCallbackUrl),
       );
       const reconnected = await selectMetaManagedPage(
         request(adminSession.token),
