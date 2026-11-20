@@ -2,6 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { HeaderUserActions, PageFooter } from "@/app/components/page-chrome";
 import { getViewer } from "@/server/auth";
+import {
+  getOperationalDashboard,
+  type DashboardBookingItem,
+  type DashboardConversationItem,
+  type DashboardReminderItem,
+} from "@/server/dashboard-service";
+import { formatMinorAmount } from "@/server/money";
 
 type IconName =
   | "dashboard"
@@ -119,18 +126,164 @@ function Navigation() {
   );
 }
 
-const dashboardMetrics = [
-  { label: "Today's bookings", detail: "Booking tools are coming later" },
-  { label: "Open conversations", detail: "Manage the unified Inbox" },
-  { label: "Customers", detail: "Manage customer records" },
-  { label: "Services", detail: "Manage bookable Services" },
-];
+function formatDashboardDate(isoDate: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(isoDate));
+}
+
+function BookingItems({
+  bookings,
+  emptyMessage,
+  timeZone,
+  showDeposit = false,
+}: {
+  bookings: DashboardBookingItem[];
+  emptyMessage: string;
+  timeZone: string;
+  showDeposit?: boolean;
+}) {
+  if (bookings.length === 0) {
+    return <p className="dashboard-empty">{emptyMessage}</p>;
+  }
+  return (
+    <ul className="dashboard-item-list">
+      {bookings.map((booking) => (
+        <li className="dashboard-item" key={booking.id}>
+          <div>
+            <strong>{booking.customerName}</strong>
+            <span>{booking.serviceName}</span>
+            <span>{formatDashboardDate(booking.startAt, timeZone)}</span>
+          </div>
+          <div className="dashboard-item-actions">
+            {showDeposit && (
+              <span className="dashboard-item-note">
+                {formatMinorAmount(
+                  booking.depositAmountMinor,
+                  booking.currency,
+                )}{" "}
+                due
+              </span>
+            )}
+            <Link
+              className="dashboard-action-link"
+              href={`/bookings/${booking.id}`}
+            >
+              View Booking
+            </Link>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ConversationItems({
+  conversations,
+  timeZone,
+}: {
+  conversations: DashboardConversationItem[];
+  timeZone: string;
+}) {
+  if (conversations.length === 0) {
+    return <p className="dashboard-empty">No customers are waiting for a reply.</p>;
+  }
+  return (
+    <ul className="dashboard-item-list">
+      {conversations.map((conversation) => (
+        <li className="dashboard-item" key={conversation.id}>
+          <div>
+            <strong>{conversation.contactLabel}</strong>
+            <span>
+              {conversation.channel} ·{" "}
+              {formatDashboardDate(conversation.lastMessageAt, timeZone)}
+            </span>
+            <span>{conversation.lastMessagePreview}</span>
+          </div>
+          <Link
+            className="dashboard-action-link"
+            href={`/inbox/${conversation.id}`}
+          >
+            Reply
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ReminderItems({
+  reminders,
+  timeZone,
+}: {
+  reminders: DashboardReminderItem[];
+  timeZone: string;
+}) {
+  if (reminders.length === 0) {
+    return <p className="dashboard-empty">No reminder failures need attention.</p>;
+  }
+  return (
+    <ul className="dashboard-item-list">
+      {reminders.map((reminder) => (
+        <li className="dashboard-item" key={reminder.id}>
+          <div>
+            <strong>{reminder.customerName}</strong>
+            <span>
+              {reminder.serviceName} · {reminder.channel}
+            </span>
+            <span>
+              Failed {formatDashboardDate(reminder.scheduledFor, timeZone)} ·{" "}
+              {reminder.attemptCount}{" "}
+              {reminder.attemptCount === 1 ? "attempt" : "attempts"}
+            </span>
+          </div>
+          <Link
+            className="dashboard-action-link"
+            href={`/bookings/${reminder.bookingId}`}
+          >
+            Review
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default async function Home() {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
   if (!viewer.tenant) redirect("/account");
   const { tenant } = viewer;
+  const operational = await getOperationalDashboard(tenant);
+  const dashboardMetrics = [
+    {
+      label: "Today's bookings",
+      value: operational.todayCount,
+      detail: "Scheduled today, excluding cancellations",
+    },
+    {
+      label: "Upcoming bookings",
+      value: operational.upcomingCount,
+      detail: "Future active Bookings",
+    },
+    {
+      label: "Customers awaiting reply",
+      value: operational.attentionCount,
+      detail: "Conversations where the customer spoke last",
+    },
+    {
+      label: "Deposits awaiting payment",
+      value: operational.awaitingDepositCount,
+      detail: "Bookings currently awaiting their deposit",
+    },
+    {
+      label: "Reminder failures",
+      value: operational.failedReminderCount,
+      detail: "Due reminders with a failed delivery attempt",
+    },
+  ];
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -199,7 +352,10 @@ export default async function Home() {
             </div>
             <div className="date-label">
               <span aria-hidden="true" className="calendar-dot" />
-              {tenant.businessName}
+              {new Intl.DateTimeFormat("en-GB", {
+                dateStyle: "full",
+                timeZone: operational.timeZone,
+              }).format(new Date(operational.generatedAt))}
             </div>
           </div>
 
@@ -212,65 +368,90 @@ export default async function Home() {
                     —
                   </span>
                 </div>
-                <p className="metric-value">—</p>
+                <p className="metric-value">{metric.value}</p>
                 <p className="metric-detail">{metric.detail}</p>
               </article>
             ))}
           </section>
 
-          <section aria-labelledby="welcome-card-title" className="welcome-card">
-            <div className="welcome-content">
-              <span className="welcome-kicker">YOUR BUSINESS, SIMPLIFIED</span>
-              <h2 id="welcome-card-title">Your workspace is ready to grow.</h2>
-              <p>
-                The foundation is in place. As your tools are added, this
-                dashboard will bring your day-to-day work together.
-              </p>
-              <div className="welcome-note">
-                <span aria-hidden="true" className="welcome-note-icon">
-                  ✓
-                </span>
-                <span>Simple tools for your everyday work</span>
-              </div>
-            </div>
-            <div aria-hidden="true" className="welcome-illustration">
-              <div className="illustration-orbit illustration-orbit-outer" />
-              <div className="illustration-orbit illustration-orbit-inner" />
-              <div className="illustration-card illustration-card-back" />
-              <div className="illustration-card illustration-card-front">
-                <span className="illustration-check">✓</span>
-                <span className="illustration-line illustration-line-long" />
-                <span className="illustration-line illustration-line-short" />
-              </div>
-              <span className="illustration-spark illustration-spark-one">✦</span>
-              <span className="illustration-spark illustration-spark-two">✦</span>
-            </div>
-          </section>
-
-          <section aria-labelledby="getting-started-title" className="next-section">
-            <div className="section-heading">
-              <div>
-                <h2 id="getting-started-title">Your workspace at a glance</h2>
-                <p>These areas will become available as the platform grows.</p>
-              </div>
-              <span className="section-tag">IN DEVELOPMENT</span>
-            </div>
-            <div className="area-list">
-              {navigationItems.slice(1, 5).map((item, index) => (
-                <div className="area-item" key={item.label}>
-                  <span className={`area-icon area-icon-${index + 1}`}>
-                    <Icon name={item.icon} />
-                  </span>
-                  <span className="area-name">{item.label}</span>
-                  <span className="area-status">
-                    {item.href ? "Available" : "Coming later"}
-                  </span>
-                  <span aria-hidden="true" className="area-arrow">
-                    →
-                  </span>
+          <section
+            aria-label="Daily operational overview"
+            className="dashboard-sections"
+          >
+            <article className="dashboard-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <p className="eyebrow">TODAY</p>
+                  <h2>Today&apos;s Bookings</h2>
                 </div>
-              ))}
-            </div>
+                <Link className="dashboard-action-link" href="/bookings">
+                  All Bookings
+                </Link>
+              </div>
+              <BookingItems
+                bookings={operational.todayBookings}
+                emptyMessage="No Bookings are scheduled today."
+                timeZone={operational.timeZone}
+              />
+            </article>
+
+            <article className="dashboard-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <p className="eyebrow">COMING UP</p>
+                  <h2>Upcoming Bookings</h2>
+                </div>
+              </div>
+              <BookingItems
+                bookings={operational.upcomingBookings}
+                emptyMessage="No upcoming Bookings."
+                timeZone={operational.timeZone}
+              />
+            </article>
+
+            <article className="dashboard-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <p className="eyebrow">INBOX</p>
+                  <h2>Customers awaiting reply</h2>
+                </div>
+                <Link className="dashboard-action-link" href="/inbox">
+                  Open Inbox
+                </Link>
+              </div>
+              <ConversationItems
+                conversations={operational.attentionConversations}
+                timeZone={operational.timeZone}
+              />
+            </article>
+
+            <article className="dashboard-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <p className="eyebrow">PAYMENTS</p>
+                  <h2>Deposits awaiting payment</h2>
+                </div>
+              </div>
+              <BookingItems
+                bookings={operational.awaitingDepositBookings}
+                emptyMessage="No Booking deposits are awaiting payment."
+                showDeposit
+                timeZone={operational.timeZone}
+              />
+            </article>
+
+            <article className="dashboard-panel dashboard-panel-wide">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <p className="eyebrow">REMINDERS</p>
+                  <h2>Delivery failures</h2>
+                </div>
+              </div>
+              <ReminderItems
+                reminders={operational.failedReminders}
+                timeZone={operational.timeZone}
+              />
+            </article>
           </section>
         </main>
 

@@ -1446,7 +1446,7 @@ STOP after completion.
 
 # STAGE 18 — Additional Communication Channels
 
-Status: IN PROGRESS — TWILIO SMS AND WHATSAPP COMPLETE; FACEBOOK IMPLEMENTED, LIVE VALIDATION PENDING
+Status: COMPLETE — TWILIO SMS, WHATSAPP AND FACEBOOK MESSENGER VALIDATED
 
 ## Objective
 
@@ -1621,23 +1621,29 @@ templates, tags, marketing, Instagram, reminders and delivery-status events are
 deferred. Standard Access supports app-role/test users only; ordinary customers
 require the appropriate Advanced Access and App Review approval.
 
-Live validation remains required. Deploy the fail-closed endpoint before adding
-the callback URL, then connect one approved Facebook Page, subscribe it to
-`messages`, prove a signed inbound Page message and an outbound reply in the
-same tenant Conversation, and confirm duplicate delivery remains idempotent.
-Stop after that proof.
-
 Production deployment `dpl_8hPLuLoDJXTcWX2eQMQmjhKChzAg` completed as Ready
 and was assigned to `https://www.booksimple.app`. Before any Meta route secret
 was configured, both the webhook verification GET and signed-event POST
 endpoints returned safe empty `503` responses, proving the deployed boundary is
-present and fails closed. Live setup is paused at Meta's developer-account
-registration because creating that account requires the account owner to accept
-the Meta Platform Terms and Developer Policies explicitly.
+present and fails closed.
+
+Live validation is complete. The production tenant route was configured with
+server-only credentials, Meta accepted the callback verification, and the Iris
+Infinity Studio - Fife Page was subscribed to the `messages` webhook field.
+Production probes returned `200` for the correct verification token, `403` for
+an incorrect token, `401` for a structurally valid unsigned webhook and `400`
+for malformed input. A Page message reached the BookSimple Inbox and a reply
+sent from the same tenant Conversation reached Messenger. Focused and Cosmos
+integration tests retain coverage for Meta message-ID idempotency, persistence
+and tenant isolation. Public messaging still requires the appropriate
+`pages_messaging` Advanced Access and App Review approval; app-role testing is
+complete. The Facebook Messenger increment and Stage 18 are complete.
 
 ---
 
 # STAGE 19 — Operational Dashboard
+
+Status: COMPLETE
 
 ## Objective
 
@@ -1655,10 +1661,30 @@ Do not build advanced analytics.
 
 ## Completion Criteria
 
-- dashboard uses tenant-scoped data
-- information is operationally useful
-- mobile layout works
-- no cross-tenant aggregation occurs
+- [x] dashboard uses tenant-scoped data
+- [x] information is operationally useful
+- [x] mobile layout works
+- [x] no cross-tenant aggregation occurs
+
+Implemented:
+
+- the authenticated Server Component passes only its server-derived tenant
+  context into the dashboard read model,
+- exact tenant-scoped counts cover today's non-cancelled Bookings, future
+  active Bookings, customer-last Conversations, Bookings awaiting deposits and
+  due failed Reminders,
+- bounded operational lists link staff directly to the relevant Booking or
+  Conversation and use the Business timezone for daily boundaries and display,
+- the dashboard queries dedicated tenant partitions for Bookings and Reminders;
+  the hierarchical Conversation query includes an explicit tenant predicate
+  and cannot aggregate another Business's records,
+- malformed or cross-tenant dashboard records fail explicitly rather than
+  producing a partial success-shaped view, and
+- the five metrics and operational panels collapse from desktop grids to a
+  single-column mobile layout with shared blue action buttons.
+
+Focused tests cover timezone-safe day boundaries, including daylight-saving
+changes, and the customer-last Conversation attention rule.
 
 STOP after completion.
 

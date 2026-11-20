@@ -1303,7 +1303,33 @@ retryable `UNSUPPORTED_CHANNEL` failure until those adapters are connected.
 
 ---
 
-# 24. Background Jobs
+# 24. Operational Dashboard
+
+The Stage 19 dashboard is a server-rendered tenant read model. The authenticated
+viewer supplies the active `TenantContext`; the browser does not submit a
+Business identifier. Booking and Reminder queries use the tenant GUID as the
+Cosmos partition key. Conversation summaries retain an explicit tenant
+equality predicate because their container uses the hierarchical
+`/tenantId`, `/conversationId` key.
+
+The read model calculates today's UTC boundaries from the Business IANA
+timezone, including daylight-saving transitions. It reports exact counts and
+bounded lists for today's non-cancelled Bookings, future active Bookings,
+customer-last Conversations, Bookings awaiting deposits and due failed
+Reminders. Booking references are re-read through the existing tenant-owned
+Booking service before display so Customer and Service details retain their
+existing authorization and validation boundary.
+
+A Conversation requires attention only when its latest Message direction is
+`INBOUND`; this is an operational queue, not an unread-message or analytics
+system. Deposit attention uses the reconciled Booking
+`AWAITING_DEPOSIT` status. Reminder attention uses due `FAILED` Reminder
+records. Invalid counts, cross-tenant records or malformed references fail the
+dashboard explicitly rather than silently omitting unsafe data.
+
+---
+
+# 25. Background Jobs
 
 Long-running or scheduled operations must not depend upon an open browser session.
 
