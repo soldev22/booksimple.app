@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import test from "node:test";
+import { GET as metaOAuthCallback } from "../src/app/api/meta/connect/oauth/callback/route.ts";
 import {
   AUTH_COOKIE_NAME,
   createSession,
@@ -89,6 +90,29 @@ test("Meta OAuth configuration and callbacks are strict", () => {
       META_TOKEN_ENCRYPTION_KEY: "not-a-key",
     }),
   );
+});
+
+test("Meta OAuth callback returns through a same-site browser navigation", async () => {
+  const previous = Object.fromEntries(
+    Object.keys(metaEnvironment()).map((name) => [name, process.env[name]]),
+  );
+  Object.assign(process.env, metaEnvironment());
+  try {
+    const response = await metaOAuthCallback(
+      new Request(
+        "https://www.booksimple.app/api/meta/connect/oauth/callback",
+      ),
+    );
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /^text\/html/);
+    assert.match(html, /http-equiv="refresh"/);
+    assert.match(html, /\/settings\?meta=error/);
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      restoreEnvironment(name, value);
+    }
+  }
 });
 
 test(
