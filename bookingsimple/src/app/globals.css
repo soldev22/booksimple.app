@@ -211,8 +211,20 @@ a:focus-visible {
 }
 
 .main-column {
+  display: flex;
   min-height: 100vh;
+  flex-direction: column;
   margin-left: var(--sidebar-width);
+}
+
+.workspace-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.workspace-menu-button,
+.sidebar-backdrop {
+  display: none;
 }
 
 .topbar {
@@ -818,7 +830,27 @@ a:focus-visible {
 
 @media (max-width: 760px) {
   .sidebar {
-    display: none;
+    visibility: hidden;
+    z-index: 12;
+    display: flex;
+    width: min(84vw, 280px);
+    transform: translateX(-100%);
+    box-shadow: 14px 0 40px rgb(32 36 58 / 18%);
+  }
+
+  .sidebar.sidebar-open {
+    visibility: visible;
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    z-index: 11;
+    inset: 0;
+    display: block;
+    width: 100%;
+    border: 0;
+    background: rgb(32 36 58 / 38%);
   }
 
   .main-column {
@@ -827,26 +859,35 @@ a:focus-visible {
 
   .topbar {
     min-height: 62px;
+    gap: 12px;
     padding: 0 20px;
   }
 
-  .mobile-brand {
-    display: inline-flex;
-    padding: 0;
-  }
-
-  .mobile-brand .brand-mark {
-    width: 31px;
-    height: 31px;
+  .workspace-menu-button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--line);
     border-radius: 10px;
-    font-size: 19px;
-  }
-
-  .mobile-brand .brand-name {
-    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 20px;
   }
 
   .breadcrumb {
+    display: flex;
+    margin-right: auto;
+  }
+
+  .breadcrumb > span:first-child,
+  .breadcrumb-divider {
+    display: none;
+  }
+
+  .topbar .signed-in-details {
     display: none;
   }
 
@@ -855,32 +896,35 @@ a:focus-visible {
   }
 
   .mobile-navigation {
-    display: block;
-    padding: 12px 12px 10px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface);
+    display: none;
   }
 
   .navigation-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 5px;
   }
 
   .navigation-link {
-    min-height: 39px;
-    justify-content: center;
-    gap: 7px;
-    padding: 0 6px;
-    font-size: 11px;
+    min-height: 43px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 0 12px;
+    font-size: 13px;
   }
 
   .nav-icon {
-    width: 16px;
-    height: 16px;
+    width: 19px;
+    height: 19px;
   }
 
   .dashboard {
     padding: 27px 20px 34px;
+  }
+
+  .workspace-main .account-shell,
+  .workspace-main .account-shell-wide {
+    width: calc(100% - 32px);
+    margin: 24px auto;
   }
 
   .page-heading {

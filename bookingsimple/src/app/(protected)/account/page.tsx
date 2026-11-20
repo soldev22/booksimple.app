@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getViewer } from "@/server/auth";
 import { AccountShell } from "@/app/components/account-shell";
-import Link from "next/link";
 import { BusinessSettingsPanel } from "../settings/business-settings-panel";
 import { ApplicationResubmissionForm } from "./application-resubmission-form";
 
@@ -22,10 +21,6 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
   const { user } = viewer;
   return (
     <AccountShell title="Your account" description="Open the areas available to your account." viewer={viewer} wide>
-      <nav aria-label="Account destinations" className="admin-navigation">
-        {viewer.tenant && <Link href="/settings">Open business settings</Link>}
-        {user.platformAdmin && <Link href="/admin">Open platform administration</Link>}
-      </nav>
       {viewer.tenant && (
         <BusinessSettingsPanel
           section="profile"

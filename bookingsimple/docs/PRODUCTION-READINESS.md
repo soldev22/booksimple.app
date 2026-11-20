@@ -4,8 +4,8 @@ Generated: 2026-11-20
 
 ## Verdict
 
-Stage 20 code readiness passed. Deployment and real-data approval remain
-separate Stage 21 decisions.
+Stage 20 code readiness passed. Vercel remains the approved V1 application
+host. Real-data approval remains a separate operational decision.
 
 ## Reviewed Controls
 

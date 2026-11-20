@@ -1756,44 +1756,31 @@ STOP before deploying production unless deployment is explicitly requested.
 
 ---
 
-# STAGE 21 — Azure Deployment
+# STAGE 21 — Azure Deployment (Not Required)
 
-## Objective
+## Deployment Decision
 
-Deploy the production-ready application to Microsoft Azure.
+Stage 21 is closed as not applicable.
 
-Exact Azure resources must be selected based on the requirements established by the completed application.
+The completed application remains hosted on Vercel, with Azure Cosmos DB for
+NoSQL as its managed database. Migrating the Next.js application from Vercel to
+an Azure application-hosting service would add infrastructure without a current
+product, security, reliability or scaling requirement.
 
-Do not create unnecessary infrastructure.
+Do not provision Azure App Service, Azure Container Apps, AKS or a separate API
+service for V1. Reconsider application hosting only if a measured scaling,
+security, deployment or integration requirement justifies a migration.
 
-Deployment planning should cover:
+Azure remains in scope only for the existing Cosmos DB resource and its
+associated identity, authorization, monitoring and backup controls.
 
-- application hosting
-- Azure Cosmos DB for NoSQL configuration and hosting
-- secrets
-- monitoring
-- logging
-- networking where required
-- scheduled/background work
-- backups
-- custom domain
-- TLS/HTTPS
+The deployment-time operational sign-offs identified in Stage 20 remain
+required before approving real production data. Closing this Azure-hosting
+stage does not waive environment separation, Vercel-to-Azure workload identity,
+monitoring and alert ownership, backup restore testing, secret rotation or
+authenticated production-like validation.
 
-Infrastructure decisions must be documented.
-
-Use separate configuration/secrets for development and production.
-
-## Completion Criteria
-
-- application deployed
-- database migrations applied safely
-- production secrets configured securely
-- HTTPS works
-- monitoring works
-- background processing works
-- health checks pass
-
-STOP after deployment verification.
+No application deployment or infrastructure change is required for this stage.
 
 ---
 

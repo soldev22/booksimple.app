@@ -270,9 +270,6 @@ export function InboxPanel() {
         )}
       </section>
 
-      <p className="account-links">
-        <Link href="/">Back to workspace</Link>
-      </p>
     </>
   );
 }

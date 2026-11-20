@@ -52,24 +52,25 @@ Do not create a separate frontend and backend application unless a later require
 
 # 3. Hosting
 
-The current application shell is deployed on Vercel. This deployment is a
-foundation preview, not production readiness or approval to deploy business data.
+The application is hosted on Vercel. Vercel remains the approved V1 application
+host; moving the Next.js application to Azure is not planned without a measured
+scaling, security, deployment or integration requirement.
 
 The initial plan keeps the web application and its server-side API on Vercel
 and Cosmos DB on Azure. No separate API service is planned.
 
 The architecture should be compatible with Azure services without forcing application business logic to depend directly on Azure-specific APIs.
 
-Likely infrastructure may eventually include:
+Supporting infrastructure may include:
 
-- Azure-hosted web application
 - Azure Cosmos DB for NoSQL
 - secret management
 - monitoring
 - background processing
 - object/file storage
 
-Exact services will be selected when deployment begins.
+Do not add an Azure application-hosting service while Vercel meets the
+application's requirements.
 
 Local development must remain straightforward.
 
@@ -587,6 +588,15 @@ User-facing content and action links use the shared rounded blue button
 treatment. Structural navigation such as the product logo, workspace sidebar,
 signed-in identity link and accessibility skip link retains its purpose-specific
 styling.
+
+All authenticated routes render inside one persistent workspace layout. The
+fixed desktop sidebar contains role-aware workspace and management destinations;
+Next.js route navigation replaces only the main content area. The current route
+is identified with `aria-current` and in the workspace breadcrumb. On narrow
+screens, the same sidebar becomes a labelled modal-style navigation panel that
+closes after a destination is selected. Individual pages retain contextual
+detail links but do not repeat global workspace navigation or "Back to
+workspace" links.
 
 ## Implemented Business Setup
 
