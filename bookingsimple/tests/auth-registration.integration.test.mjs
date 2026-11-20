@@ -342,7 +342,7 @@ test("previous MFA enrollment does not request an authenticator at login",
         password: "Synthetic-only-Password-17!",
       });
       assert.equal(login.body.message, "Signed in.");
-      assert.equal(login.body.redirect, "/account");
+      assert.equal(login.body.redirect, "/");
       assert.ok(await resolveSessionToken(login.sessionToken));
     } finally {
       await fixture.cleanup();

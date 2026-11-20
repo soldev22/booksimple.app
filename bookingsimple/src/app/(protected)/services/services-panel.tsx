@@ -10,7 +10,7 @@ import {
   serviceApi,
 } from "./service-client";
 
-export function ServicesPanel() {
+export function ServicesPanel({ canCreate }: { canCreate: boolean }) {
   const [services, setServices] = useState<ServiceView[]>([]);
   const [defaultCurrency, setDefaultCurrency] = useState("");
   const [search, setSearch] = useState("");
@@ -129,13 +129,14 @@ export function ServicesPanel() {
       {error && <p className="account-error" role="alert">{error}</p>}
       {message && <p className="account-notice" role="status">{message}</p>}
 
-      <section className="account-section">
-        <h2>Add Service</h2>
-        <p>
-          Prices use the selected currency and are stored exactly in minor
-          units. Zero-priced Services are allowed.
-        </p>
-        <form className="service-form-grid" onSubmit={createService}>
+      {canCreate && (
+        <section className="account-section">
+          <h2>Add Service</h2>
+          <p>
+            Prices use the selected currency and are stored exactly in minor
+            units. Zero-priced Services are allowed.
+          </p>
+          <form className="service-form-grid" onSubmit={createService}>
           <label className="account-field">
             <span>Name</span>
             <input
@@ -194,8 +195,9 @@ export function ServicesPanel() {
           >
             {busy ? "Creating..." : "Create Service"}
           </button>
-        </form>
-      </section>
+          </form>
+        </section>
+      )}
 
       <section className="account-section">
         <h2>Services</h2>

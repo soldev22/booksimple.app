@@ -315,10 +315,16 @@ selected three-letter currency's fraction digits, so `25.50 GBP` is stored as
 scales. Zero-priced Services are permitted.
 
 The create form defaults currency from the active Business, but every Service
-stores its own explicit currency. All active company users can create, search,
-view, edit, activate and deactivate Services within their tenant. Deactivation
-preserves the Service GUID for future Booking references. Updates and status
-changes use Cosmos ETags to reject conflicting writes.
+stores its own explicit currency. Only company administrators can create
+Services; the form is omitted for company users and the server rejects direct
+creation requests with `403`. All active company users can search, view, edit,
+activate and deactivate Services within their tenant. Deactivation preserves
+the Service GUID for future Booking references. Updates and status changes use
+Cosmos ETags to reject conflicting writes.
+
+The workspace sidebar and Booking pages expose Service-management links only to
+company administrators. Company users can still select tenant-owned active
+Services while creating or editing Bookings.
 
 Service names are not globally unique. Separate businesses can independently
 create identically named Services, but tenant partitioning and authorization
@@ -583,6 +589,14 @@ resubmit the same Business record for review; the operation requires the
 authenticated owning account and rejects membership or non-rejected states.
 Unassigned accounts are directed to request an invitation from the relevant
 company administrator.
+
+Successful sign-in returns the workspace root as the sole authenticated landing
+destination. Active tenant members therefore enter the business Dashboard at
+`/`. Platform-only administrators enter a platform Dashboard at the same route;
+its persistent left navigation exposes the platform directory, administration
+overview and Account while routed content replaces only the main area.
+Unassigned or application-only accounts continue through the root authorization
+guard to the Account page because they do not yet have a workspace Dashboard.
 
 User-facing content and action links use the shared rounded blue button
 treatment. Structural navigation such as the product logo, workspace sidebar,

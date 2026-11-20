@@ -52,9 +52,11 @@ function statusLabel(status: BookingStatus): string {
 }
 
 export function BookingDetailPanel({
+  canManageServices,
   initialBooking,
   initialPayments,
 }: {
+  canManageServices: boolean;
   initialBooking: BookingView;
   initialPayments: PaymentView[];
 }) {
@@ -384,12 +386,14 @@ export function BookingDetailPanel({
           >
             View Customer
           </Link>
-          <Link
-            className="customer-action-link"
-            href={`/services/${booking.serviceId}`}
-          >
-            View Service
-          </Link>
+          {canManageServices && (
+            <Link
+              className="customer-action-link"
+              href={`/services/${booking.serviceId}`}
+            >
+              View Service
+            </Link>
+          )}
           {booking.conversationId && (
             <Link
               className="customer-action-link"

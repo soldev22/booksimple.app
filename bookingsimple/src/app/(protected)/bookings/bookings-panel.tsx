@@ -44,9 +44,11 @@ function displayDate(isoDate: string, timeZone: string): string {
 }
 
 export function BookingsPanel({
+  canManageServices,
   initialCustomerId,
   initialConversationId,
 }: {
+  canManageServices: boolean;
   initialCustomerId?: string;
   initialConversationId?: string;
 }) {
@@ -211,10 +213,14 @@ export function BookingsPanel({
             <Link className="customer-action-link" href="/customers">
               Manage Customers
             </Link>
-            {" "}
-            <Link className="customer-action-link" href="/services">
-              Manage Services
-            </Link>
+            {canManageServices && (
+              <>
+                {" "}
+                <Link className="customer-action-link" href="/services">
+                  Manage Services
+                </Link>
+              </>
+            )}
           </p>
         ) : (
           <form

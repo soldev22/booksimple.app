@@ -25,7 +25,7 @@ import { reminderContainer } from "../src/server/reminder-storage.ts";
 
 const baseUrl = process.env.AUTH_PAGE_TEST_BASE_URL;
 
-function syntheticUser(email, tenantId) {
+function syntheticUser(email, tenantId, role = "company_user") {
   const now = new Date().toISOString();
   return {
     id: "user",
@@ -45,8 +45,8 @@ function syntheticUser(email, tenantId) {
     mfaEnabled: false,
     membership: {
       tenantId,
-      username: `company-user-${randomUUID().slice(0, 8)}`,
-      role: "company_user",
+      username: `${role}-${randomUUID().slice(0, 8)}`,
+      role,
     },
   };
 }
@@ -66,7 +66,17 @@ test(
       `booking-user-b-${suffix}@example.invalid`,
       tenantB,
     );
-    const users = [userA, userB];
+    const serviceAdminA = syntheticUser(
+      `booking-service-admin-a-${suffix}@example.invalid`,
+      tenantA,
+      "company_admin",
+    );
+    const serviceAdminB = syntheticUser(
+      `booking-service-admin-b-${suffix}@example.invalid`,
+      tenantB,
+      "company_admin",
+    );
+    const users = [userA, userB, serviceAdminA, serviceAdminB];
     const sessions = [];
     const customerIds = new Map([
       [tenantA, new Set()],
@@ -184,7 +194,8 @@ test(
         await createDocument(controlContainer(), user);
         sessions.push(await createSession(user, false));
       }
-      const [sessionA, sessionB] = sessions;
+      const [sessionA, sessionB, serviceAdminSessionA, serviceAdminSessionB] =
+        sessions;
 
       const unauthenticated = await request("/bookings");
       assert.equal(unauthenticated.status, 307);
@@ -209,7 +220,7 @@ test(
         email: `booking-b-${suffix}@example.invalid`,
         phone: "",
       });
-      const serviceA = await createService(sessionA.token, tenantA, {
+      const serviceA = await createService(serviceAdminSessionA.token, tenantA, {
         name: "General appointment",
         description: "",
         durationMinutes: "60",
@@ -217,7 +228,7 @@ test(
         currency: "GBP",
       });
       const replacementServiceA = await createService(
-        sessionA.token,
+        serviceAdminSessionA.token,
         tenantA,
         {
           name: "Extended appointment",
@@ -227,7 +238,7 @@ test(
           currency: "GBP",
         },
       );
-      const serviceB = await createService(sessionB.token, tenantB, {
+      const serviceB = await createService(serviceAdminSessionB.token, tenantB, {
         name: "Tenant B appointment",
         description: "",
         durationMinutes: "30",
@@ -530,8 +541,9 @@ test(
           body: JSON.stringify({ bookingId: bookingA.id }),
         },
       );
-      assert.equal(paymentRequest.status, 201);
-      const paymentA = (await paymentRequest.json()).payment;
+      const paymentResult = await paymentRequest.json();
+      assert.equal(paymentRequest.status, 201, JSON.stringify(paymentResult));
+      const paymentA = paymentResult.payment;
       paymentIds.get(tenantA).add(paymentA.id);
       assert.equal(paymentA.paymentType, "DEPOSIT");
       assert.equal(paymentA.amountMinor, 40);

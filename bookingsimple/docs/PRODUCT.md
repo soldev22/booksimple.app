@@ -281,9 +281,14 @@ The concept of a service is generic.
 
 Do not assume a service is a beauty treatment, haircut or any other industry-specific activity.
 
-Active company users can create, search, view and edit Services belonging to
-their own business. Services are deactivated rather than physically deleted so
-future Booking references retain a stable Service identity.
+Company administrators can create Services belonging to their business. All
+active company users can search, view and edit tenant-owned Services. Services
+are deactivated rather than physically deleted so future Booking references
+retain a stable Service identity.
+
+Service-management navigation is shown only to company administrators. Company
+users select existing active Services when working with Bookings but do not
+receive links into the Service-management area.
 
 ---
 

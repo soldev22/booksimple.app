@@ -163,40 +163,49 @@ export function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const primaryItems: NavigationItem[] = hasTenant
-    ? [
+  const primaryItems: NavigationItem[] =
+    hasTenant || platformAdmin
+      ? [
         {
           label: "Dashboard",
           icon: "dashboard",
           href: "/",
           match: (path) => path === "/",
         },
-        {
-          label: "Inbox",
-          icon: "inbox",
-          href: "/inbox",
-          match: startsWithRoute("/inbox"),
-        },
-        {
-          label: "Customers",
-          icon: "customers",
-          href: "/customers",
-          match: startsWithRoute("/customers"),
-        },
-        {
-          label: "Bookings",
-          icon: "bookings",
-          href: "/bookings",
-          match: startsWithRoute("/bookings"),
-        },
-        {
-          label: "Services",
-          icon: "services",
-          href: "/services",
-          match: startsWithRoute("/services"),
-        },
+        ...(hasTenant
+          ? [
+              {
+                label: "Inbox",
+                icon: "inbox" as const,
+                href: "/inbox",
+                match: startsWithRoute("/inbox"),
+              },
+              {
+                label: "Customers",
+                icon: "customers" as const,
+                href: "/customers",
+                match: startsWithRoute("/customers"),
+              },
+              {
+                label: "Bookings",
+                icon: "bookings" as const,
+                href: "/bookings",
+                match: startsWithRoute("/bookings"),
+              },
+              ...(canManageCompanyUsers
+                ? [
+                    {
+                      label: "Services",
+                      icon: "services" as const,
+                      href: "/services",
+                      match: startsWithRoute("/services"),
+                    },
+                  ]
+                : []),
+            ]
+          : []),
       ]
-    : [];
+      : [];
   const managementItems: NavigationItem[] = [
     ...(hasTenant
       ? [

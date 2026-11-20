@@ -16,7 +16,7 @@ import { serviceContainer } from "../src/server/service-storage.ts";
 
 const baseUrl = process.env.AUTH_PAGE_TEST_BASE_URL;
 
-function syntheticUser(email, tenantId) {
+function syntheticUser(email, tenantId, role = "company_admin") {
   const now = new Date().toISOString();
   return {
     id: "user",
@@ -36,8 +36,8 @@ function syntheticUser(email, tenantId) {
     mfaEnabled: false,
     membership: {
       tenantId,
-      username: `company-user-${randomUUID().slice(0, 8)}`,
-      role: "company_user",
+      username: `${role}-${randomUUID().slice(0, 8)}`,
+      role,
     },
   };
 }
@@ -57,7 +57,12 @@ test(
       `service-user-b-${suffix}@example.invalid`,
       tenantB,
     );
-    const users = [userA, userB];
+    const staffA = syntheticUser(
+      `service-staff-a-${suffix}@example.invalid`,
+      tenantA,
+      "company_user",
+    );
+    const users = [userA, userB, staffA];
     const sessions = [];
     const serviceIds = new Map([
       [tenantA, new Set()],
@@ -100,7 +105,7 @@ test(
         await createDocument(controlContainer(), user);
         sessions.push(await createSession(user, false));
       }
-      const [sessionA, sessionB] = sessions;
+      const [sessionA, sessionB, staffSessionA] = sessions;
 
       const unauthenticated = await request("/services");
       assert.equal(unauthenticated.status, 307);
@@ -108,7 +113,35 @@ test(
         new URL(unauthenticated.headers.get("location"), baseUrl).pathname,
         "/login",
       );
-      assert.equal((await request("/services", sessionA.token)).status, 200);
+      const adminServicesPage = await request("/services", sessionA.token);
+      assert.equal(adminServicesPage.status, 200);
+      const adminServicesHtml = await adminServicesPage.text();
+      assert.match(adminServicesHtml, /<h2>Add Service/);
+      assert.match(adminServicesHtml, /href="\/services"/);
+      const staffServicesPage = await request(
+        "/services",
+        staffSessionA.token,
+      );
+      assert.equal(staffServicesPage.status, 200);
+      const staffServicesHtml = await staffServicesPage.text();
+      assert.doesNotMatch(staffServicesHtml, /<h2>Add Service/);
+      assert.doesNotMatch(staffServicesHtml, /href="\/services"/);
+
+      const staffCreate = await request(
+        "/api/services",
+        staffSessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "Staff-created Service",
+            description: "",
+            durationMinutes: "30",
+            price: "10",
+            currency: "GBP",
+          }),
+        },
+      );
+      assert.equal(staffCreate.status, 403);
 
       const injectedTenant = await request("/api/services", sessionA.token, {
         method: "POST",

@@ -134,10 +134,80 @@ function ReminderItems({
   );
 }
 
+function PlatformAdminDashboard({ name }: { name: string }) {
+  const destinations = [
+    {
+      title: "Users and companies",
+      description:
+        "Manage company users, cross-company accounts and company records.",
+      href: "/admin/users",
+      action: "Open directory",
+    },
+    {
+      title: "Company applications",
+      description:
+        "Review pending applications and manage approval decisions.",
+      href: "/admin/users#applications",
+      action: "Review applications",
+    },
+    {
+      title: "Administration overview",
+      description: "Open the platform administration landing area.",
+      href: "/admin",
+      action: "Open administration",
+    },
+    {
+      title: "My account",
+      description: "Review your signed-in account and available roles.",
+      href: "/account",
+      action: "Open account",
+    },
+  ];
+
+  return (
+    <div className="dashboard">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">PLATFORM OVERVIEW</p>
+          <h1>Platform dashboard</h1>
+          <p className="page-description">
+            Welcome, {name}. Choose an administration area from the left menu
+            or the shortcuts below.
+          </p>
+        </div>
+      </div>
+      <section
+        aria-label="Platform administration destinations"
+        className="dashboard-sections"
+      >
+        {destinations.map((destination) => (
+          <article className="dashboard-panel" key={destination.href}>
+            <div className="dashboard-panel-heading">
+              <div>
+                <p className="eyebrow">ADMINISTRATION</p>
+                <h2>{destination.title}</h2>
+              </div>
+            </div>
+            <p className="dashboard-empty">{destination.description}</p>
+            <Link className="dashboard-action-link" href={destination.href}>
+              {destination.action}
+            </Link>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 export default async function Home() {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
-  if (!viewer.tenant) redirect("/account");
+  if (!viewer.tenant) {
+    if (viewer.user.platformAdmin) {
+      return <PlatformAdminDashboard name={viewer.user.name} />;
+    }
+    redirect("/account");
+  }
   const { tenant } = viewer;
   const operational = await getOperationalDashboard(tenant);
   const dashboardMetrics = [

@@ -52,6 +52,15 @@ test("application pages require a valid session while sign-in and recovery remai
         email: fixture.email,
         password: "Synthetic-only-Password-17!",
       });
+      const platformDashboard = await get("/", adminLogin.sessionToken);
+      assert.equal(platformDashboard.status, 200);
+      const platformDashboardHtml = await platformDashboard.text();
+      assert.match(platformDashboardHtml, /<h1>Platform dashboard<\/h1>/);
+      assert.match(
+        platformDashboardHtml,
+        /aria-current="page"[^>]*href="\/"/,
+      );
+      assert.match(platformDashboardHtml, /href="\/admin\/users"/);
       assert.equal((await get("/admin", adminLogin.sessionToken)).status, 200);
       assert.equal((await get("/admin/users", adminLogin.sessionToken)).status, 200);
       await fixture.action("logout", {}, adminLogin.sessionToken);

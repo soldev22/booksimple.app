@@ -650,11 +650,15 @@ Service list and name/description search use bounded continuation-token pages
 inside the authenticated tenant partition. Service details use point reads with
 the Service GUID and server-resolved tenant GUID.
 
-All active company users can create, view, search and edit Services and can
-activate or deactivate them. Prices are converted server-side from decimal
-input to safe integer minor units using the selected currency's fraction
-digits. Zero prices are supported. Currency defaults to the active Business
-currency in the UI and remains explicit on every Service document.
+Company administrators can create Services. All active company users can view,
+search and edit Services and can activate or deactivate them. The creation form
+is omitted for company users and the server rejects direct creation requests.
+Service-management links in the workspace shell and Booking pages are visible
+only to company administrators.
+Prices are converted server-side from decimal input to safe integer minor units
+using the selected currency's fraction digits. Zero prices are supported.
+Currency defaults to the active Business currency in the UI and remains
+explicit on every Service document.
 
 Runtime input validation, ETag-protected updates, cross-tenant API and URL
 denial, responsive tables, and the workspace Services link are implemented.

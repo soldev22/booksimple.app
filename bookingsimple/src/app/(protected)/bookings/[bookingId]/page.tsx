@@ -38,6 +38,7 @@ export default async function BookingDetailPage({
       wide
     >
       <BookingDetailPanel
+        canManageServices={viewer.tenant.role === "company_admin"}
         initialBooking={booking}
         initialPayments={payments}
       />

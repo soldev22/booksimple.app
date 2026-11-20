@@ -14,7 +14,7 @@ export default async function ServicesPage() {
       viewer={viewer}
       wide
     >
-      <ServicesPanel />
+      <ServicesPanel canCreate={viewer.tenant.role === "company_admin"} />
     </AccountShell>
   );
 }

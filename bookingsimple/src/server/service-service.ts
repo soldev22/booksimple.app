@@ -31,7 +31,10 @@ import type {
   ServiceSearchInput,
 } from "./service-validation";
 import { isCurrencyCode } from "./money";
-import { requireTenantContext } from "./tenant-context";
+import {
+  requireCompanyAdmin,
+  requireTenantContext,
+} from "./tenant-context";
 
 function serviceError(status: number, message: string): StorageError {
   return new StorageError(message, status);
@@ -174,6 +177,7 @@ export async function createService(
   input: ServiceMutationInput,
 ): Promise<ServiceView> {
   const context = await contextForRequest(request);
+  requireCompanyAdmin(context);
   const now = new Date().toISOString();
   const document: ServiceDocument = {
     id: randomUUID(),

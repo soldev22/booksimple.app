@@ -660,7 +660,7 @@ async function login(
       message: invitationToken
         ? "Invitation accepted. You are now signed in."
         : "Signed in.",
-      redirect: "/account",
+      redirect: "/",
     },
     sessionToken: session.token,
   };
