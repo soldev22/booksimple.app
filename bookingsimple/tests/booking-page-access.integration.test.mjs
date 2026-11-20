@@ -832,6 +832,65 @@ test(
         409,
       );
 
+      const userArchive = await request(
+        `/api/bookings/${bookingA.id}/archive`,
+        sessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ archived: true }),
+        },
+      );
+      assert.equal(userArchive.status, 403);
+      const adminArchive = await request(
+        `/api/bookings/${bookingA.id}/archive`,
+        serviceAdminSessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ archived: true }),
+        },
+      );
+      assert.equal(adminArchive.status, 200);
+      const archivedBooking = (await adminArchive.json()).booking;
+      assert.equal(archivedBooking.archivedFromStatus, "CANCELLED");
+      assert.equal(
+        archivedBooking.archivedByUserId,
+        serviceAdminA.userId,
+      );
+      assert.equal(archivedBooking.status, "CANCELLED");
+
+      const activeAfterArchive = await request(
+        "/api/bookings",
+        serviceAdminSessionA.token,
+      );
+      assert.deepEqual((await activeAfterArchive.json()).bookings, []);
+      const archivedList = await request(
+        "/api/bookings?archive=archived",
+        serviceAdminSessionA.token,
+      );
+      assert.deepEqual(
+        (await archivedList.json()).bookings.map((booking) => booking.id),
+        [bookingA.id],
+      );
+      assert.equal(
+        (
+          await request(
+            "/api/bookings?archive=archived",
+            sessionA.token,
+          )
+        ).status,
+        403,
+      );
+      const restored = await request(
+        `/api/bookings/${bookingA.id}/archive`,
+        serviceAdminSessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ archived: false }),
+        },
+      );
+      assert.equal(restored.status, 200);
+      assert.equal((await restored.json()).booking.archivedAt, undefined);
+
       const storedA = (
         await bookingContainer().item(bookingA.id, tenantA).read()
       ).resource;

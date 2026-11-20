@@ -766,6 +766,14 @@ tenants, cross-tenant Customer-link denial, exact and ambiguous matching,
 no-match creation and linking, local-only delivery, and atomic Conversation
 summary updates.
 
+Conversation deletion is implemented as company-administrator-only reversible
+archival. Current Inbox queries exclude archived summaries; administrators can
+list Deleted Conversations, inspect retained Messages, and restore a thread.
+Dashboard attention counts also exclude archived Conversations. Archived
+Conversations reject outbound replies and Customer linking. A new
+inbound provider Message automatically restores the existing Conversation
+without replacing its Channel Identity or Message history.
+
 ## Completion Criteria
 
 - conversations can be created
@@ -1643,6 +1651,13 @@ and tenant isolation. Public messaging still requires the appropriate
 `pages_messaging` Advanced Access and App Review approval; app-role testing is
 complete. The Facebook Messenger increment and Stage 18 are complete.
 
+App Review readiness now adds an administrator-only Meta Page connection flow.
+Facebook OAuth retrieves the requesting administrator's managed Pages,
+BookSimple displays the safe Page names and IDs for selection, subscribes the
+selected Page to Messenger webhooks and stores only its encrypted Page token in
+a tenant-owned integration document. The existing environment route remains a
+migration fallback until the production tenant completes the in-app connection.
+
 ---
 
 # STAGE 19 — Operational Dashboard
@@ -1686,6 +1701,10 @@ Implemented:
   Staff store; company administrators manage Staff accounts and control
   same-tenant Booking assignment, while platform administrators retain their
   separate audited cross-company user-management boundary,
+- company administrators can delete Bookings through reversible archival;
+  archived records preserve linked history, cancel active reminders, disappear
+  from operational views and remain available in a Deleted Bookings view for
+  restoration,
 - the dashboard queries dedicated tenant partitions for Bookings and Reminders;
   the hierarchical Conversation query includes an explicit tenant predicate
   and cannot aggregate another Business's records,

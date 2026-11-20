@@ -76,7 +76,7 @@ export async function queryConversationPage(
   );
   const page = await iterator.fetchNext();
   return {
-    items: page.resources,
+    items: page.resources ?? [],
     continuationToken: page.continuationToken || undefined,
   };
 }
@@ -101,7 +101,7 @@ export async function queryMessagePage(
   );
   const page = await iterator.fetchNext();
   return {
-    items: page.resources,
+    items: page.resources ?? [],
     continuationToken: page.continuationToken || undefined,
   };
 }

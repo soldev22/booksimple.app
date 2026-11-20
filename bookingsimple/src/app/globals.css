@@ -1746,6 +1746,19 @@ a:focus-visible {
   margin: 18px 0 4px;
 }
 
+.booking-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.booking-table-actions .account-button {
+  min-height: 32px;
+  padding: 7px 11px;
+  font-size: 10px;
+}
+
 .booking-filters {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1906,12 +1919,18 @@ a:focus-visible {
 
 .booking-detail-heading,
 .booking-status-actions,
-.booking-related-links {
+.booking-related-links,
+.booking-archive-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.booking-archive-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
 }
 
 .booking-detail-heading h2,

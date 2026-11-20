@@ -9,6 +9,7 @@ import type {
 } from "@/server/conversation-types";
 import {
   conversationApi,
+  parseConversationArchiveMutation,
   parseConversationMutation,
   parseConversationPage,
 } from "./conversation-client";
@@ -20,23 +21,30 @@ function contactPlaceholder(channel: CommunicationChannel): string {
   return "Provider-neutral contact ID";
 }
 
-export function InboxPanel() {
+export function InboxPanel({
+  canManageArchivedConversations,
+}: {
+  canManageArchivedConversations: boolean;
+}) {
   const router = useRouter();
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
+  const [archive, setArchive] = useState<"active" | "archived">("active");
   const [channel, setChannel] =
     useState<CommunicationChannel>("WHATSAPP");
   const [continuationToken, setContinuationToken] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams({
       pageSize: "50",
       ...(submittedSearch ? { search: submittedSearch } : {}),
+      archive,
     });
     conversationApi(`/api/conversations?${query}`, "GET")
       .then((value) => {
@@ -60,12 +68,13 @@ export function InboxPanel() {
     return () => {
       active = false;
     };
-  }, [submittedSearch]);
+  }, [archive, submittedSearch]);
 
   function searchConversations(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setMessage("");
     setSubmittedSearch(search.trim());
   }
 
@@ -106,6 +115,7 @@ export function InboxPanel() {
         pageSize: "50",
         continuationToken,
         ...(submittedSearch ? { search: submittedSearch } : {}),
+        archive,
       });
       const page = parseConversationPage(
         await conversationApi(`/api/conversations?${query}`, "GET"),
@@ -123,9 +133,49 @@ export function InboxPanel() {
     }
   }
 
+  async function setConversationArchived(
+    conversation: ConversationView,
+    archived: boolean,
+  ) {
+    if (busy) return;
+    const confirmed = window.confirm(
+      archived
+        ? `Delete the Conversation with ${conversation.contactLabel}? Messages will be retained and a new incoming message will restore it automatically.`
+        : `Restore the Conversation with ${conversation.contactLabel}?`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      parseConversationArchiveMutation(
+        await conversationApi(
+          `/api/conversations/${conversation.id}/archive`,
+          "POST",
+          { archived },
+        ),
+      );
+      setConversations((current) =>
+        current.filter((item) => item.id !== conversation.id),
+      );
+      setMessage(
+        archived ? "Conversation deleted." : "Conversation restored.",
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The Conversation archive state could not be changed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       {error && <p className="account-error" role="alert">{error}</p>}
+      {message && <p className="account-success" role="status">{message}</p>}
 
       <section className="account-section">
         <h2>Start a Conversation</h2>
@@ -204,6 +254,24 @@ export function InboxPanel() {
 
       <section className="account-section">
         <h2>Conversations</h2>
+        {canManageArchivedConversations && (
+          <label className="account-field">
+            <span>Visibility</span>
+            <select
+              disabled={loading || busy}
+              onChange={(event) => {
+                setLoading(true);
+                setConversations([]);
+                setContinuationToken(undefined);
+                setArchive(event.target.value as "active" | "archived");
+              }}
+              value={archive}
+            >
+              <option value="active">Current Conversations</option>
+              <option value="archived">Deleted Conversations</option>
+            </select>
+          </label>
+        )}
         <form className="conversation-search" onSubmit={searchConversations}>
           <label className="account-field">
             <span>Search</span>
@@ -253,6 +321,21 @@ export function InboxPanel() {
                   >
                     Open Conversation
                   </Link>
+                  {canManageArchivedConversations && (
+                    <button
+                      className={`account-button${archive === "archived" ? " account-button-secondary" : " account-button-danger"}`}
+                      disabled={busy}
+                      onClick={() =>
+                        void setConversationArchived(
+                          conversation,
+                          archive !== "archived",
+                        )
+                      }
+                      type="button"
+                    >
+                      {archive === "archived" ? "Restore" : "Delete"}
+                    </button>
+                  )}
                 </div>
               </article>
             ))}

@@ -62,7 +62,7 @@ async function queryItems<T>(
       },
     )
     .fetchNext();
-  return response.resources;
+  return response.resources ?? [];
 }
 
 export async function queryDashboardStoredData(
@@ -86,6 +86,7 @@ export async function queryDashboardStoredData(
   const todayWhere = [
     "c.type = @type",
     "c.tenantId = @tenantId",
+    "NOT IS_DEFINED(c.archivedAt)",
     "c.startAt >= @dayStart",
     "c.startAt < @dayEnd",
     "c.status != @cancelled",
@@ -93,12 +94,14 @@ export async function queryDashboardStoredData(
   const upcomingWhere = [
     "c.type = @type",
     "c.tenantId = @tenantId",
+    "NOT IS_DEFINED(c.archivedAt)",
     "c.startAt >= @dayEnd",
     "c.status IN (@pending, @awaitingDeposit, @confirmed)",
   ].join(" AND ");
   const awaitingDepositWhere = [
     "c.type = @type",
     "c.tenantId = @tenantId",
+    "NOT IS_DEFINED(c.archivedAt)",
     "c.status = @awaitingDeposit",
   ].join(" AND ");
 
@@ -111,6 +114,7 @@ export async function queryDashboardStoredData(
   const attentionWhere = [
     "c.type = @type",
     "c.tenantId = @tenantId",
+    "NOT IS_DEFINED(c.archivedAt)",
     "c.lastMessageDirection = @inbound",
   ].join(" AND ");
 

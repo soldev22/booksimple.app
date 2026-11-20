@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseConversationId,
+  parseConversationArchiveInput,
   parseConversationListInput,
   parseCreateConversationInput,
   parseCreateMessageInput,
@@ -157,7 +158,14 @@ test("Message, linking and paging inputs are strictly validated", () => {
       search: "alex",
       continuationToken: undefined,
       pageSize: 25,
+      archive: "active",
     },
+  );
+  assert.equal(
+    parseConversationListInput(
+      new URLSearchParams({ archive: "archived" }),
+    ).archive,
+    "archived",
   );
   assert.deepEqual(parseMessageListInput(new URLSearchParams()), {
     messageContinuationToken: undefined,
@@ -167,5 +175,18 @@ test("Message, linking and paging inputs are strictly validated", () => {
     parseMessageListInput(
       new URLSearchParams({ messagePageSize: "101" }),
     ),
+  );
+});
+
+test("Conversation archive actions accept only explicit archive state", () => {
+  assert.deepEqual(parseConversationArchiveInput({ archived: true }), {
+    archived: true,
+  });
+  assert.deepEqual(parseConversationArchiveInput({ archived: false }), {
+    archived: false,
+  });
+  assert.throws(() => parseConversationArchiveInput({ archived: "true" }));
+  assert.throws(() =>
+    parseConversationArchiveInput({ archived: true, tenantId: "injected" }),
   );
 });

@@ -17,6 +17,19 @@ function isDirection(value: unknown): boolean {
 }
 
 function isConversation(value: unknown): value is ConversationView {
+  const archiveValues =
+    typeof value === "object" && value !== null
+      ? [
+          "archivedAt" in value ? value.archivedAt : undefined,
+          "archivedByUserId" in value ? value.archivedByUserId : undefined,
+          "archivedByUsername" in value
+            ? value.archivedByUsername
+            : undefined,
+        ]
+      : [];
+  const archiveFieldsValid =
+    archiveValues.every((item) => item === undefined) ||
+    archiveValues.every((item) => typeof item === "string");
   return (
     typeof value === "object" &&
     value !== null &&
@@ -38,8 +51,23 @@ function isConversation(value: unknown): value is ConversationView {
     "createdAt" in value &&
     typeof value.createdAt === "string" &&
     "updatedAt" in value &&
-    typeof value.updatedAt === "string"
+    typeof value.updatedAt === "string" &&
+    archiveFieldsValid
   );
+}
+
+export function parseConversationArchiveMutation(
+  value: unknown,
+): ConversationView {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("conversation" in value) ||
+    !isConversation(value.conversation)
+  ) {
+    throw new Error("The server returned invalid Conversation data.");
+  }
+  return value.conversation;
 }
 
 function isMessage(value: unknown): value is MessageView {

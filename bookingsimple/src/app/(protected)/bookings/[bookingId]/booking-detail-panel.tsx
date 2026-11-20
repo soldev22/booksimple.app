@@ -53,11 +53,13 @@ function statusLabel(status: BookingStatus): string {
 }
 
 export function BookingDetailPanel({
+  canManageArchivedBookings,
   canManageServices,
   canManageStaff,
   initialBooking,
   initialPayments,
 }: {
+  canManageArchivedBookings: boolean;
   canManageServices: boolean;
   canManageStaff: boolean;
   initialBooking: BookingView;
@@ -73,7 +75,8 @@ export function BookingDetailPanel({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const endpoint = `/api/bookings/${booking.id}`;
-  const detailsEditable = !terminalStatuses.includes(booking.status);
+  const detailsEditable =
+    !booking.archivedAt && !terminalStatuses.includes(booking.status);
   const depositPayment = payments.find(
     (payment) => payment.paymentType === "DEPOSIT",
   );
@@ -233,6 +236,7 @@ export function BookingDetailPanel({
     ) {
       return;
     }
+
     setBusy(true);
     setError("");
     setMessage("");
@@ -245,6 +249,34 @@ export function BookingDetailPanel({
         failure instanceof Error
           ? failure.message
           : "The Booking status could not be changed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setArchived(archived: boolean) {
+    if (busy) return;
+    const confirmed = window.confirm(
+      archived
+        ? "Delete this Booking? It will be archived and removed from operational views, but its history will be retained."
+        : "Restore this Booking to operational views?",
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const updated = parseBookingResponse(
+        await bookingApi(`${endpoint}/archive`, "POST", { archived }),
+      );
+      setBooking(updated);
+      setMessage(archived ? "Booking deleted." : "Booking restored.");
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The Booking archive state could not be changed.",
       );
     } finally {
       setBusy(false);
@@ -343,6 +375,17 @@ export function BookingDetailPanel({
     <>
       {error && <p className="account-error" role="alert">{error}</p>}
       {message && <p className="account-notice" role="status">{message}</p>}
+      {booking.archivedAt && (
+        <p className="account-notice">
+          This Booking was deleted on{" "}
+          {new Intl.DateTimeFormat("en-GB", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: booking.timeZone,
+          }).format(new Date(booking.archivedAt))}
+          . Its history is retained and it is hidden from operational views.
+        </p>
+      )}
 
       <section className="account-section">
         <div className="booking-detail-heading">
@@ -431,6 +474,18 @@ export function BookingDetailPanel({
             </Link>
           )}
         </div>
+        {canManageArchivedBookings && (
+          <div className="booking-archive-actions">
+            <button
+              className={`account-button${booking.archivedAt ? " account-button-secondary" : " account-button-danger"}`}
+              disabled={busy}
+              onClick={() => void setArchived(!booking.archivedAt)}
+              type="button"
+            >
+              {booking.archivedAt ? "Restore Booking" : "Delete Booking"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="account-section">

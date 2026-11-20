@@ -51,6 +51,8 @@ will not copy this pattern automatically.
 | `user` | Registered account and authorization state | Name, email, password hash, verification state, roles, optional company membership and application | Account holder; platform controls authorization | Active account lifetime; anonymized deletion tombstone for 1 year | Yes |
 | `email-index` | Enforces one active account per normalized email | Normalized email and user ID | Account system | Active account lifetime; deleted atomically when the account is anonymized | No |
 | `business` | Company tenant and basic profile | Name, status, member count, timezone, country, currency, default deposit percentage, default reminder rules and non-secret Stripe connected-account references | Company tenant | Company lifetime until an approved business-retention process exists | Yes |
+| `meta-messenger-connection` | Connects one tenant to one managed Facebook Page | Tenant ID, Page ID/name, encrypted Page token, connector and timestamps | Company tenant; company administrators manage | Until disconnected or the Business is erased | Yes |
+| `meta-oauth-state` | Single-use Meta OAuth and managed-Page selection state | Hashed state ID, tenant/user binding, status, expiry and temporarily encrypted candidate Pages | Company tenant workflow | 10 minutes while pending; consumed metadata for 24 hours | No |
 | `business-invitation` | Allows one email to join one company | Invitee email, staff role, status, inviter ID, hashed secret and expiry | Company tenant | Pending for 30 days; accepted or revoked for 90 days; link valid for 7 days | Yes, while pending |
 | `membership-reservation` | Prevents duplicate internal usernames and maintains member counts during cross-document updates | User ID, internal username, role and operation ID | Company tenant | Active for membership lifetime; released for 30 days | No |
 | `email-verification` | One-time email verification | User ID, hashed token, authorization version and expiry | Account holder | 24 hours | No |
@@ -145,6 +147,41 @@ Each Business may store separate test and live Stripe Connect OAuth references:
 - Only company administrators can start the single-use OAuth connection flow.
 - The current capability/readiness state is retrieved from Stripe and is not
   trusted solely from a stale local flag.
+
+## Approved Meta Messenger Connection Document
+
+Meta connection and OAuth-state documents use `auth-control` because they are
+authorization-sensitive integration settings, not Conversation data.
+
+```json
+{
+  "id": "meta-messenger-connection",
+  "partitionKey": "business-guid",
+  "type": "meta-messenger-connection",
+  "schemaVersion": 1,
+  "tenantId": "business-guid",
+  "pageId": "facebook-page-id",
+  "pageName": "Business Page",
+  "encryptedPageAccessToken": "AES-256-GCM envelope",
+  "connectedByUserId": "company-admin-user-guid",
+  "connectedAt": "2026-11-20T14:00:00.000Z",
+  "updatedAt": "2026-11-20T14:00:00.000Z"
+}
+```
+
+Meta connection decisions:
+
+- Only a server-derived `company_admin` may start, select or disconnect.
+- One active connection exists per tenant and each Page ID may belong to only
+  one tenant.
+- Page tokens and temporary OAuth candidate tokens are encrypted at rest and
+  are never returned to the browser, logs or error responses.
+- App ID, App Secret, webhook verify token, encryption key and Graph API
+  version remain server environment configuration.
+- OAuth state is high entropy, stored only as a hash-derived identifier, bound
+  to the requesting tenant/user and consumed with ETag protection.
+- Webhook routing authenticates the unmodified request with the app-wide secret
+  before resolving the Page to a tenant.
 
 ## Approved Customer Document
 
@@ -280,7 +317,10 @@ paths `/tenantId` and `/conversationId`.
   "lastMessageDirection": "INBOUND",
   "lastMessageAt": "2026-11-17T17:00:00.000Z",
   "createdAt": "2026-11-17T16:55:00.000Z",
-  "updatedAt": "2026-11-17T17:00:00.000Z"
+  "updatedAt": "2026-11-17T17:00:00.000Z",
+  "archivedAt": "optional-UTC-instant",
+  "archivedByUserId": "optional-company-admin-user-guid",
+  "archivedByUsername": "optional-company-admin-username"
 }
 ```
 
@@ -294,6 +334,12 @@ Conversation decisions:
   fields needed by the inbox; message history is not embedded.
 - All active company users can view and work with Conversations in their own
   tenant.
+- Company administrators can archive and restore Conversation summaries.
+  Archive metadata is all-or-none. Archived Conversations retain every Message
+  and their Channel Identity, are excluded from active Inbox queries, and
+  cannot receive staff-authored replies or Customer-link changes.
+- A new inbound customer Message automatically clears the Conversation archive
+  metadata in the same transactional batch that appends the Message.
 - Stage 8 records have no default TTL. Production communication retention and
   export policy must be approved before real provider data is connected.
 
@@ -370,7 +416,9 @@ Channel identity decisions:
 | Operation | Partition scope |
 | --- | --- |
 | List tenant Conversations | Hierarchical prefix containing `tenantId` |
+| List archived tenant Conversations | Hierarchical prefix containing `tenantId`; company administrator only |
 | Read a Conversation | Full key containing `tenantId` and `conversationId` |
+| Archive or restore a Conversation | Full key containing `tenantId` and `conversationId`; company administrator only, ETag guarded |
 | Read or append Messages | Full key containing `tenantId` and `conversationId` |
 | Match a channel identity | Point read using deterministic ID and server-resolved `tenantId` |
 | Resolve to a Customer | Tenant-scoped Customer point read and guarded cross-container updates |
@@ -404,6 +452,10 @@ Bookings are durable business records and have no default TTL.
   "appliedDepositPercentage": 25,
   "depositAmountMinor": 638,
   "depositOverridden": false,
+  "archivedAt": "optional-UTC-instant",
+  "archivedByUserId": "optional-company-administrator-guid",
+  "archivedByUsername": "optional-company-username-snapshot",
+  "archivedFromStatus": "optional-previous-booking-status",
   "createdAt": "2026-11-17T17:30:00.000Z",
   "updatedAt": "2026-11-17T17:30:00.000Z"
 }
@@ -441,6 +493,11 @@ Booking decisions:
   user who can manage Bookings may set or clear an individual override.
 - Cancellation changes status to `CANCELLED`; Bookings are not physically
   deleted.
+- The administrator-facing Delete action archives rather than physically
+  erases. Its four archive fields are either all present or all absent.
+  Operational lists exclude archived records; administrators can list and
+  restore them. Archiving cancels active reminders and restoration reinstates
+  the snapshotted previous status.
 - Payment state, resources, locations, notes, recurrence and availability
   conflict detection are not stored on the Booking.
 - Booking records contain Customer and Conversation references but do not copy
@@ -457,6 +514,7 @@ Booking decisions:
 | Cancel or change status | ETag-protected replacement in one `tenantId` partition |
 | Override Booking deposit | ETag-protected replacement with authenticated user attribution |
 | Assign or clear Staff | Company-administrator-only ETag-protected replacement after active same-tenant membership validation |
+| Archive or restore | Company-administrator-only ETag-protected replacement; archive metadata and history remain in the tenant partition |
 | Create from a Conversation | Full Conversation key plus same-tenant Customer validation |
 | Platform-wide Booking search | Not part of Stage 9 |
 

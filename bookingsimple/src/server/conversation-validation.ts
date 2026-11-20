@@ -92,6 +92,13 @@ const conversationListSchema = z
     search: z.string().trim().max(100).default(""),
     continuationToken: z.string().max(8_192).optional(),
     pageSize: z.coerce.number().int().min(1).max(100).default(50),
+    archive: z.enum(["active", "archived"]).default("active"),
+  })
+  .strict();
+
+const conversationArchiveSchema = z
+  .object({
+    archived: z.boolean(),
   })
   .strict();
 
@@ -110,6 +117,9 @@ export type CreateConversationInput = z.infer<
 export type CreateMessageInput = z.infer<typeof createMessageSchema>;
 export type LinkCustomerInput = z.infer<typeof linkCustomerSchema>;
 export type ConversationListInput = z.infer<typeof conversationListSchema>;
+export type ConversationArchiveInput = z.infer<
+  typeof conversationArchiveSchema
+>;
 export type MessageListInput = z.infer<typeof messageListSchema>;
 
 export function parseCreateConversationInput(
@@ -137,7 +147,14 @@ export function parseConversationListInput(
     search: searchParams.get("search") ?? undefined,
     continuationToken: searchParams.get("continuationToken") ?? undefined,
     pageSize: searchParams.get("pageSize") ?? undefined,
+    archive: searchParams.get("archive") ?? undefined,
   });
+}
+
+export function parseConversationArchiveInput(
+  input: unknown,
+): ConversationArchiveInput {
+  return conversationArchiveSchema.parse(input);
 }
 
 export function parseMessageListInput(

@@ -17,6 +17,7 @@ import {
 } from "../../customers/customer-client";
 import {
   conversationApi,
+  parseConversationArchiveMutation,
   parseConversationDetails,
   parseMessageMutation,
 } from "../conversation-client";
@@ -85,8 +86,10 @@ function deliveryLabel(message: MessageView): string {
 }
 
 export function ConversationDetailPanel({
+  canManageArchivedConversation,
   initialDetails,
 }: {
+  canManageArchivedConversation: boolean;
   initialDetails: ConversationDetails;
 }) {
   const [details, setDetails] = useState(initialDetails);
@@ -97,11 +100,47 @@ export function ConversationDetailPanel({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const { conversation, resolution } = details;
+  const archived = Boolean(conversation.archivedAt);
   const canSendExternally =
-    conversation.channel === "EMAIL" ||
-    conversation.channel === "SMS" ||
-    conversation.channel === "WHATSAPP" ||
-    conversation.channel === "FACEBOOK";
+    !archived &&
+    (conversation.channel === "EMAIL" ||
+      conversation.channel === "SMS" ||
+      conversation.channel === "WHATSAPP" ||
+      conversation.channel === "FACEBOOK");
+
+  async function setArchived(nextArchived: boolean) {
+    if (busy) return;
+    const confirmed = window.confirm(
+      nextArchived
+        ? `Delete the Conversation with ${conversation.contactLabel}? Messages will be retained and a new incoming message will restore it automatically.`
+        : `Restore the Conversation with ${conversation.contactLabel}?`,
+    );
+    if (!confirmed) return;
+    setBusy("archive");
+    setError("");
+    setMessage("");
+    try {
+      const updated = parseConversationArchiveMutation(
+        await conversationApi(
+          `/api/conversations/${conversation.id}/archive`,
+          "POST",
+          { archived: nextArchived },
+        ),
+      );
+      setDetails((current) => ({ ...current, conversation: updated }));
+      setMessage(
+        nextArchived ? "Conversation deleted." : "Conversation restored.",
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The Conversation archive state could not be changed.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function refreshDetails() {
     const value = await conversationApi(
@@ -294,6 +333,12 @@ export function ConversationDetailPanel({
     <>
       {error && <p className="account-error" role="alert">{error}</p>}
       {message && <p className="account-notice" role="status">{message}</p>}
+      {archived && (
+        <p className="account-notice" role="status">
+          This Conversation is deleted. Its Messages are retained, and a new
+          incoming customer Message will restore it automatically.
+        </p>
+      )}
       <DuplicateWarnings warnings={warnings} />
 
       <div className="conversation-detail-heading">
@@ -304,9 +349,25 @@ export function ConversationDetailPanel({
             <span>{resolution.normalizedAddress}</span>
           </p>
         </div>
-        <Link className="customer-action-link" href="/inbox">
-          Back to Inbox
-        </Link>
+        <div className="conversation-list-footer">
+          <Link className="customer-action-link" href="/inbox">
+            Back to Inbox
+          </Link>
+          {canManageArchivedConversation && (
+            <button
+              className={`account-button${archived ? " account-button-secondary" : " account-button-danger"}`}
+              disabled={Boolean(busy)}
+              onClick={() => void setArchived(!archived)}
+              type="button"
+            >
+              {busy === "archive"
+                ? "Saving..."
+                : archived
+                  ? "Restore Conversation"
+                  : "Delete Conversation"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="conversation-detail-layout">
@@ -388,7 +449,9 @@ export function ConversationDetailPanel({
 
         <aside className="conversation-resolution" aria-labelledby="customer-title">
           <h2 id="customer-title">Customer</h2>
-          {conversation.customerId ? (
+          {archived && !conversation.customerId ? (
+            <p>Restore this Conversation before linking a Customer.</p>
+          ) : conversation.customerId ? (
             <>
               <p className="conversation-resolved">Customer linked</p>
               <Link

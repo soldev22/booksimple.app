@@ -2,11 +2,26 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountShell } from "@/app/components/account-shell";
 import { getViewer } from "@/server/auth";
+import { MetaConnectionPanel } from "./meta-connection-panel";
 
-export default async function BusinessSettingsPage() {
+export default async function BusinessSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ meta?: string; state?: string }>;
+}) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
   if (!viewer.tenant) redirect("/account");
+  const query = await searchParams;
+  const metaResult = ["select", "cancelled", "error"].includes(
+    query.meta ?? "",
+  )
+    ? (query.meta as "select" | "cancelled" | "error")
+    : undefined;
+  const selectionState =
+    typeof query.state === "string" && query.state.length <= 100
+      ? query.state
+      : undefined;
   return (
     <AccountShell
       title="Business settings"
@@ -36,6 +51,10 @@ export default async function BusinessSettingsPage() {
           </p>
         </section>
       )}
+      <MetaConnectionPanel
+        metaResult={metaResult}
+        selectionState={selectionState}
+      />
     </AccountShell>
   );
 }

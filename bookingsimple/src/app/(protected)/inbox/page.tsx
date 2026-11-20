@@ -14,7 +14,11 @@ export default async function InboxPage() {
       viewer={viewer}
       wide
     >
-      <InboxPanel />
+      <InboxPanel
+        canManageArchivedConversations={
+          viewer.tenant.role === "company_admin"
+        }
+      />
     </AccountShell>
   );
 }

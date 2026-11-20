@@ -41,6 +41,12 @@ const bookingDepositOverrideSchema = z
   })
   .strict();
 
+const bookingArchiveSchema = z
+  .object({
+    archived: z.boolean(),
+  })
+  .strict();
+
 const bookingListSchema = z
   .object({
     status: z
@@ -51,6 +57,7 @@ const bookingListSchema = z
     pageSize: z.coerce.number().int().min(1).max(100).default(50),
     startAtFrom: z.string().datetime({ offset: true }).optional(),
     startAtTo: z.string().datetime({ offset: true }).optional(),
+    archive: z.enum(["active", "archived"]).default("active"),
   })
   .strict()
   .superRefine((input, context) => {
@@ -83,6 +90,7 @@ export type BookingStatusInput = z.infer<typeof bookingStatusSchema>;
 export type BookingDepositOverrideInput = z.infer<
   typeof bookingDepositOverrideSchema
 >;
+export type BookingArchiveInput = z.infer<typeof bookingArchiveSchema>;
 export type BookingListInput = z.infer<typeof bookingListSchema>;
 
 export function parseBookingMutationInput(
@@ -105,6 +113,10 @@ export function parseBookingDepositOverrideInput(
   return bookingDepositOverrideSchema.parse(input);
 }
 
+export function parseBookingArchiveInput(input: unknown): BookingArchiveInput {
+  return bookingArchiveSchema.parse(input);
+}
+
 export function parseBookingListInput(
   searchParams: URLSearchParams,
 ): BookingListInput {
@@ -115,6 +127,7 @@ export function parseBookingListInput(
     pageSize: searchParams.get("pageSize") ?? undefined,
     startAtFrom: searchParams.get("startAtFrom") ?? undefined,
     startAtTo: searchParams.get("startAtTo") ?? undefined,
+    archive: searchParams.get("archive") ?? undefined,
   });
 }
 

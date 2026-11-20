@@ -2,6 +2,14 @@ import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { secureEqual } from "./auth-crypto";
 import {
+  metaAppSecret,
+  metaWebhookVerifyToken,
+} from "./meta-connection-config";
+import {
+  metaRouteForTenant,
+  metaRoutesForPageIds,
+} from "./meta-connection-service";
+import {
   MessagingProviderError,
   type MessagingProviderAdapter,
   type ProviderWebhookRequest,
@@ -10,22 +18,6 @@ import {
 const META_TIMEOUT_MS = 10_000;
 const pageIdSchema = z.string().regex(/^\d{5,40}$/);
 const psidSchema = z.string().regex(/^\d{5,40}$/);
-const graphApiVersionSchema = z.string().regex(/^v\d+\.\d+$/);
-const secretSchema = z.string().min(16).max(4_096).regex(/^\S+$/);
-
-const metaRouteSchema = z
-  .object({
-    tenantId: z.uuid(),
-    pageId: pageIdSchema,
-    pageAccessToken: secretSchema,
-    appSecret: secretSchema,
-    verifyToken: secretSchema,
-    graphApiVersion: graphApiVersionSchema,
-  })
-  .strict();
-
-type MetaRoute = z.infer<typeof metaRouteSchema>;
-
 const metaSendResponseSchema = z.object({
   recipient_id: psidSchema,
   message_id: z.string().trim().min(1).max(200),
@@ -64,41 +56,18 @@ const metaWebhookSchema = z
   })
   .passthrough();
 
-function configurationError(): MessagingProviderError {
+function providerRouteError(
+  error: unknown,
+  authentication = false,
+): MessagingProviderError {
+  if (error instanceof MessagingProviderError) return error;
   return new MessagingProviderError(
-    "Meta Messenger is not configured.",
-    "CONFIGURATION",
-    503,
+    authentication
+      ? "Meta Messenger webhook authentication failed."
+      : "Meta Messenger is not configured.",
+    authentication ? "AUTHENTICATION" : "CONFIGURATION",
+    authentication ? 401 : 503,
   );
-}
-
-function configuredRoutes(): MetaRoute[] {
-  const raw = process.env.META_MESSENGER_ROUTES?.trim();
-  if (!raw) throw configurationError();
-  let value: unknown;
-  try {
-    value = JSON.parse(raw) as unknown;
-  } catch {
-    throw configurationError();
-  }
-  const parsed = z.array(metaRouteSchema).min(1).max(100).safeParse(value);
-  if (!parsed.success) throw configurationError();
-  const tenants = new Set<string>();
-  const pages = new Set<string>();
-  for (const route of parsed.data) {
-    if (tenants.has(route.tenantId) || pages.has(route.pageId)) {
-      throw configurationError();
-    }
-    tenants.add(route.tenantId);
-    pages.add(route.pageId);
-  }
-  return parsed.data;
-}
-
-function routeForTenant(tenantId: string): MetaRoute {
-  const route = configuredRoutes().find((item) => item.tenantId === tenantId);
-  if (!route) throw configurationError();
-  return route;
 }
 
 function parseWebhook(rawBody: string) {
@@ -123,40 +92,25 @@ function parseWebhook(rawBody: string) {
   return parsed.data;
 }
 
-function routesForWebhook(rawBody: string) {
+async function routesForWebhook(rawBody: string) {
   const payload = parseWebhook(rawBody);
-  const configured = configuredRoutes();
-  const routes = payload.entry.map((entry) =>
-    configured.find((route) => route.pageId === entry.id),
-  );
-  if (routes.some((route) => !route)) {
-    throw new MessagingProviderError(
-      "Meta Messenger webhook authentication failed.",
-      "AUTHENTICATION",
-      401,
+  let routes;
+  try {
+    routes = await metaRoutesForPageIds(
+      payload.entry.map((entry) => entry.id),
     );
+  } catch (error) {
+    throw providerRouteError(error, true);
   }
-  const resolved = routes as MetaRoute[];
-  if (
-    resolved.some(
-      (route) => !secureEqual(route.appSecret, resolved[0].appSecret),
-    )
-  ) {
-    throw new MessagingProviderError(
-      "Meta Messenger webhook authentication failed.",
-      "AUTHENTICATION",
-      401,
-    );
-  }
-  return { payload, routes: resolved };
+  return { payload, routes };
 }
 
 function validateSignature(
-  route: MetaRoute,
+  appSecret: string,
   request: ProviderWebhookRequest,
 ): void {
   const supplied = request.headers["x-hub-signature-256"]?.trim() ?? "";
-  const expected = `sha256=${createHmac("sha256", route.appSecret)
+  const expected = `sha256=${createHmac("sha256", appSecret)
     .update(request.rawBody)
     .digest("hex")}`;
   if (!supplied || !secureEqual(supplied, expected)) {
@@ -174,12 +128,9 @@ export function verifyMetaWebhookChallenge(
   const mode = searchParams.get("hub.mode");
   const supplied = searchParams.get("hub.verify_token") ?? "";
   const challenge = searchParams.get("hub.challenge") ?? "";
-  const tokens = [
-    ...new Set(configuredRoutes().map((route) => route.verifyToken)),
-  ];
-  const tokenMatches = tokens.some(
-    (token) => supplied.length > 0 && secureEqual(supplied, token),
-  );
+  const token = metaWebhookVerifyToken();
+  const tokenMatches =
+    supplied.length > 0 && secureEqual(supplied, token);
   if (
     mode !== "subscribe" ||
     !tokenMatches ||
@@ -200,7 +151,12 @@ export const metaMessengerMessagingProvider: MessagingProviderAdapter = {
   simulated: false,
   supportedChannels: ["FACEBOOK"],
   async sendMessage(message) {
-    const route = routeForTenant(message.tenantId);
+    let route;
+    try {
+      route = await metaRouteForTenant(message.tenantId);
+    } catch (error) {
+      throw providerRouteError(error);
+    }
     const recipient = psidSchema.safeParse(message.recipientAddress.trim());
     if (!recipient.success) {
       throw new MessagingProviderError(
@@ -280,11 +236,11 @@ export const metaMessengerMessagingProvider: MessagingProviderAdapter = {
     };
   },
   async validateWebhook(request) {
-    const { routes } = routesForWebhook(request.rawBody);
-    validateSignature(routes[0], request);
+    parseWebhook(request.rawBody);
+    validateSignature(metaAppSecret(), request);
   },
   async parseIncomingMessage(request) {
-    const { payload, routes } = routesForWebhook(request.rawBody);
+    const { payload, routes } = await routesForWebhook(request.rawBody);
     return payload.entry.flatMap((entry, entryIndex) => {
       const route = routes[entryIndex];
       return entry.messaging

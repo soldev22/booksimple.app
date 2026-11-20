@@ -81,6 +81,18 @@ export function isBooking(value: unknown): value is BookingView {
         typeof value.depositOverriddenByUsername === "string" &&
         "depositOverriddenAt" in value &&
         typeof value.depositOverriddenAt === "string")) &&
+    ((!("archivedAt" in value) &&
+      !("archivedByUserId" in value) &&
+      !("archivedByUsername" in value) &&
+      !("archivedFromStatus" in value)) ||
+      ("archivedAt" in value &&
+        typeof value.archivedAt === "string" &&
+        "archivedByUserId" in value &&
+        typeof value.archivedByUserId === "string" &&
+        "archivedByUsername" in value &&
+        typeof value.archivedByUsername === "string" &&
+        "archivedFromStatus" in value &&
+        isStatus(value.archivedFromStatus))) &&
     "createdAt" in value &&
     typeof value.createdAt === "string" &&
     "updatedAt" in value &&

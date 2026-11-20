@@ -36,6 +36,7 @@ import {
   type MessageView,
 } from "./conversation-types";
 import type {
+  ConversationArchiveInput,
   ConversationListInput,
   CreateConversationInput,
   CreateMessageInput,
@@ -43,7 +44,10 @@ import type {
 } from "./conversation-validation";
 import type { TenantContext } from "./auth-types";
 import { getRequestViewer } from "./auth";
-import { requireTenantContext } from "./tenant-context";
+import {
+  requireCompanyAdmin,
+  requireTenantContext,
+} from "./tenant-context";
 import {
   messagingProviderForChannel,
   sendProviderMessage,
@@ -79,11 +83,17 @@ function assertConversationDocument(
   document: ConversationDocument,
   context: TenantContext,
 ): void {
+  const archiveFieldCount = [
+    document.archivedAt,
+    document.archivedByUserId,
+    document.archivedByUsername,
+  ].filter(Boolean).length;
   if (
     document.type !== "conversation" ||
     document.schemaVersion !== CONVERSATION_SCHEMA_VERSION ||
     document.tenantId !== context.tenantId ||
-    document.conversationId !== document.id
+    document.conversationId !== document.id ||
+    (archiveFieldCount !== 0 && archiveFieldCount !== 3)
   ) {
     throw new StorageError("Conversation data is invalid.", 503);
   }
@@ -120,6 +130,9 @@ function toConversationView(
     lastMessageAt: document.lastMessageAt,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
+    archivedAt: document.archivedAt,
+    archivedByUserId: document.archivedByUserId,
+    archivedByUsername: document.archivedByUsername,
   };
 }
 
@@ -324,6 +337,12 @@ async function appendMessageForContext(
   input: InternalMessageInput,
 ): Promise<{ conversation: ConversationView; message: MessageView }> {
   const stored = await requiredConversation(context, conversationId);
+  if (stored.document.archivedAt && input.direction === "OUTBOUND") {
+    throw new StorageError(
+      "Restore this Conversation before sending a message.",
+      409,
+    );
+  }
   const createdAt = new Date().toISOString();
   const message = buildMessage(context, stored.document, input, createdAt);
   const updated: ConversationDocument = {
@@ -333,6 +352,13 @@ async function appendMessageForContext(
     lastMessageDirection: input.direction,
     lastMessageAt: createdAt,
     updatedAt: createdAt,
+    ...(input.direction === "INBOUND" && stored.document.archivedAt
+      ? {
+          archivedAt: undefined,
+          archivedByUserId: undefined,
+          archivedByUsername: undefined,
+        }
+      : {}),
   };
   const operations: OperationInput[] = [
     {
@@ -534,6 +560,7 @@ export async function listConversationsForContext(
   context: TenantContext,
   input: ConversationListInput,
 ): Promise<ConversationPage> {
+  if (input.archive === "archived") requireCompanyAdmin(context);
   const parameters: {
     name: string;
     value: string | number | boolean | null;
@@ -553,10 +580,14 @@ export async function listConversationsForContext(
       value: input.search.toLowerCase(),
     });
   }
+  const archiveClause =
+    input.archive === "archived"
+      ? " AND IS_DEFINED(c.archivedAt)"
+      : " AND NOT IS_DEFINED(c.archivedAt)";
   const page = await queryConversationPage(
     `SELECT * FROM c
      WHERE c.tenantId = @tenantId
-       AND c.type = @type${searchClause}
+       AND c.type = @type${archiveClause}${searchClause}
      ORDER BY c.lastMessageAt DESC`,
     parameters,
     input.continuationToken,
@@ -752,6 +783,9 @@ export async function getConversationDetailsForContext(
   input: MessageListInput,
 ): Promise<ConversationDetails> {
   const stored = await requiredConversation(context, conversationId);
+  if (stored.document.archivedAt && context.role !== "company_admin") {
+    throw new StorageError("Conversation not found.", 404);
+  }
   const identity = await requiredIdentity(
     context,
     stored.document.channelIdentityId,
@@ -784,6 +818,49 @@ export async function getConversationDetails(
     conversationId,
     input,
   );
+}
+
+export async function setConversationArchived(
+  request: Request,
+  conversationId: string,
+  input: ConversationArchiveInput,
+): Promise<ConversationView> {
+  const viewer = await getRequestViewer(request);
+  const context = requireTenantContext(viewer);
+  requireCompanyAdmin(context);
+  const stored = await requiredConversation(context, conversationId);
+  if (Boolean(stored.document.archivedAt) === input.archived) {
+    return toConversationView(stored.document, context);
+  }
+
+  const now = new Date().toISOString();
+  const updated: ConversationDocument = input.archived
+    ? {
+        ...stored.document,
+        archivedAt: now,
+        archivedByUserId: viewer!.user.id,
+        archivedByUsername: context.username,
+        updatedAt: now,
+      }
+    : {
+        ...stored.document,
+        archivedAt: undefined,
+        archivedByUserId: undefined,
+        archivedByUsername: undefined,
+        updatedAt: now,
+      };
+  try {
+    const replaced = await replaceConversationDocument(updated, stored.etag);
+    return toConversationView(replaced.document, context);
+  } catch (error) {
+    if (isStatus(error, 412)) {
+      throw new StorageError(
+        "The Conversation changed. Refresh and retry.",
+        409,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function addConversationMessage(
@@ -1164,6 +1241,9 @@ export async function processIncomingProviderMessage(
           lastMessageAt: incoming.receivedAt,
         }
       : {}),
+    archivedAt: undefined,
+    archivedByUserId: undefined,
+    archivedByUsername: undefined,
     updatedAt: new Date().toISOString(),
   };
   try {
@@ -1214,6 +1294,12 @@ export async function linkConversationCustomer(
     requiredConversation(context, conversationId),
     getCustomer(context, customerId),
   ]);
+  if (storedConversation.document.archivedAt) {
+    throw new StorageError(
+      "Restore this Conversation before linking a Customer.",
+      409,
+    );
+  }
   if (customer.status !== "active") {
     throw new StorageError(
       "Only an active Customer can be linked to a Conversation.",

@@ -366,6 +366,16 @@ rejects archived, erased or cross-tenant records. Identity and Conversation
 updates use ETags, with explicit rollback if the second cross-container update
 fails. External channel adapters and real delivery are outside Stage 8.
 
+Company administrators can reversibly delete Conversations. Deletion archives
+the Conversation summary with the acting user and timestamp, excludes it from
+the normal Inbox and dashboard attention counts, and blocks outbound replies
+and Customer linking. Messages and the channel identity remain intact.
+Administrators can use the Deleted
+Conversations view to inspect or restore an archived thread. A new inbound
+customer Message clears the archive metadata transactionally while appending
+the Message, so provider routing automatically returns the Conversation to the
+active Inbox.
+
 ## Implemented Booking Foundation
 
 Bookings are stored in the dedicated `bookings` container partitioned by the
@@ -399,6 +409,14 @@ an assigned active same-tenant user's ID, registered name and company username.
 Only a company administrator can set, change or clear that assignment. Existing
 Bookings remain valid and explicitly display as unassigned. Availability
 conflict detection, resources, locations, notes and recurrence remain excluded.
+
+Booking deletion is a reversible company-administrator archive, not physical
+erasure. Archiving snapshots the acting user and previous status, cancels active
+reminders, and removes the Booking from normal lists, calendars and dashboard
+metrics while retaining its Customer, Service, payment and confirmation
+history. Administrators can review the Deleted Bookings list and restore an
+archived record; non-administrators cannot archive, restore or list archived
+Bookings.
 
 ## Implemented Deposit Engine
 
@@ -989,6 +1007,22 @@ unsupported events, and assumes the person initiated the Page conversation.
 Ordinary replies are intended only for Meta's standard messaging window,
 normally 24 hours. Standard Access is limited to app-role/test users; ordinary
 customers require the relevant Advanced Access and App Review approval.
+
+Company administrators connect Facebook Pages through an OAuth flow initiated
+from Business settings. OAuth state is single-use, expires after ten minutes
+and is bound to the authenticated tenant and requesting user. The callback
+exchanges the authorization code server-side, retrieves only Pages managed by
+that Facebook account and temporarily encrypts the candidate Page tokens while
+the administrator selects one. The browser receives Page IDs and names only.
+
+The selected Page is stored in a dedicated tenant-partitioned Meta connection
+document. Its Page access token is encrypted with AES-256-GCM using a
+server-only key; the Meta App ID, App Secret and webhook verify token remain
+environment configuration. The adapter resolves database connections first
+and retains the reviewed bounded environment route as a deployment fallback
+during migration. A Page ID may belong to only one tenant. Connecting a Page
+subscribes it to the configured Messenger webhook fields, while disconnecting
+unsubscribes it before removing the stored connection.
 
 `MOCK_TEST` remains available for local-only development. WhatsApp templates
 and marketing messages, media attachments, Facebook attachments, postbacks,

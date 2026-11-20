@@ -38,6 +38,7 @@ export default async function BookingDetailPage({
       wide
     >
       <BookingDetailPanel
+        canManageArchivedBookings={viewer.tenant.role === "company_admin"}
         canManageServices={viewer.tenant.role === "company_admin"}
         canManageStaff={viewer.tenant.role === "company_admin"}
         initialBooking={booking}

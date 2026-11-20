@@ -442,6 +442,14 @@ Facebook Messenger uses a direct Meta Graph API adapter. Set
 access token, App Secret, webhook verify token and pinned Graph API version.
 Duplicate tenants or Page IDs fail closed.
 
+For administrator-managed Page onboarding, configure `META_APP_ID`,
+`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `META_GRAPH_API_VERSION` and a
+base64-encoded 32-byte `META_TOKEN_ENCRYPTION_KEY`. Register
+`<APP_ORIGIN>/api/meta/connect/oauth/callback` as a valid Meta OAuth redirect
+URI. Company administrators can then connect a managed Page from Business
+settings. Page tokens are encrypted at rest and are never returned to the
+browser. `META_MESSENGER_ROUTES` remains a bounded migration fallback.
+
 In the Meta App dashboard, add Messenger, connect the intended Facebook Page,
 and configure this callback URL:
 

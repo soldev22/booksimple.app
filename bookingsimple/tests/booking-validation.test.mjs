@@ -7,6 +7,7 @@ import {
 } from "../src/server/booking-time.ts";
 import {
   parseBookingId,
+  parseBookingArchiveInput,
   parseBookingDepositOverrideInput,
   parseBookingListInput,
   parseBookingMutationInput,
@@ -155,6 +156,7 @@ test("Booking status, list and ID validation is bounded", () => {
       pageSize: 25,
       startAtFrom: undefined,
       startAtTo: undefined,
+      archive: "active",
     },
   );
   assert.throws(() =>
@@ -174,7 +176,15 @@ test("Booking status, list and ID validation is bounded", () => {
       pageSize: 50,
       startAtFrom: "2026-11-01T00:00:00.000Z",
       startAtTo: "2026-12-01T00:00:00.000Z",
+      archive: "active",
     },
+  );
+  assert.equal(
+    parseBookingListInput(new URLSearchParams({ archive: "archived" })).archive,
+    "archived",
+  );
+  assert.throws(() =>
+    parseBookingListInput(new URLSearchParams({ archive: "deleted" })),
   );
   assert.throws(() =>
     parseBookingListInput(
@@ -220,6 +230,7 @@ test("Booking deposit override accepts only an integer percentage", () => {
   assert.deepEqual(parseBookingDepositOverrideInput({ percentage: "25" }), {
     percentage: 25,
   });
+
   for (const input of [
     { percentage: -1 },
     { percentage: 101 },
@@ -228,4 +239,17 @@ test("Booking deposit override accepts only an integer percentage", () => {
   ]) {
     assert.throws(() => parseBookingDepositOverrideInput(input));
   }
+});
+
+test("Booking archive actions accept only explicit archive state", () => {
+  assert.deepEqual(parseBookingArchiveInput({ archived: true }), {
+    archived: true,
+  });
+  assert.deepEqual(parseBookingArchiveInput({ archived: false }), {
+    archived: false,
+  });
+  assert.throws(() => parseBookingArchiveInput({ archived: "true" }));
+  assert.throws(() =>
+    parseBookingArchiveInput({ archived: true, tenantId: "injected" }),
+  );
 });

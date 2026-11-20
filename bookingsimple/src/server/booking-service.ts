@@ -33,6 +33,7 @@ import {
 } from "./booking-types";
 import type {
   BookingDepositOverrideInput,
+  BookingArchiveInput,
   BookingListInput,
   BookingMutationInput,
   BookingUpdateInput,
@@ -124,6 +125,15 @@ function isBookingDocument(
       : document.depositOverriddenByUserId === undefined &&
         document.depositOverriddenByUsername === undefined &&
         document.depositOverriddenAt === undefined) &&
+    ((document.archivedAt === undefined &&
+      document.archivedByUserId === undefined &&
+      document.archivedByUsername === undefined &&
+      document.archivedFromStatus === undefined) ||
+      (typeof document.archivedAt === "string" &&
+        typeof document.archivedByUserId === "string" &&
+        typeof document.archivedByUsername === "string" &&
+        document.archivedFromStatus !== undefined &&
+        BOOKING_STATUSES.includes(document.archivedFromStatus))) &&
     typeof document.createdAt === "string" &&
     typeof document.updatedAt === "string"
   );
@@ -231,6 +241,10 @@ async function toBookingView(
     depositOverridden: document.depositOverridden,
     depositOverriddenByUsername: document.depositOverriddenByUsername,
     depositOverriddenAt: document.depositOverriddenAt,
+    archivedAt: document.archivedAt,
+    archivedByUserId: document.archivedByUserId,
+    archivedByUsername: document.archivedByUsername,
+    archivedFromStatus: document.archivedFromStatus,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
   };
@@ -276,6 +290,12 @@ export async function listBookingsForContext(
   const filters = ["c.type = @type"];
   const parameters: { name: string; value: string | number | boolean | null }[] =
     [{ name: "@type", value: "booking" }];
+  if (input.archive === "archived") {
+    requireCompanyAdmin(context);
+    filters.push("IS_DEFINED(c.archivedAt)");
+  } else {
+    filters.push("NOT IS_DEFINED(c.archivedAt)");
+  }
   if (input.status !== "all") {
     filters.push("c.status = @status");
     parameters.push({ name: "@status", value: input.status });
@@ -339,6 +359,9 @@ export async function getBooking(
   id: string,
 ): Promise<BookingView> {
   const current = await readOwnedBooking(context, id);
+  if (current.document.archivedAt) {
+    throw bookingError(409, "Archived Bookings cannot be edited.");
+  }
   return toBookingView(context, current.document);
 }
 
@@ -540,6 +563,9 @@ export async function overrideBookingDeposit(
   const viewer = await getRequestViewer(request);
   const context = requireTenantContext(viewer);
   const current = await readOwnedBooking(context, id);
+  if (current.document.archivedAt) {
+    throw bookingError(409, "Archived Bookings cannot be changed.");
+  }
   if (NON_EDITABLE_STATUSES.includes(current.document.status)) {
     throw bookingError(
       409,
@@ -595,6 +621,9 @@ async function transitionBookingForPayment(
 ): Promise<BookingView> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const current = await readOwnedBooking(context, id);
+    if (current.document.archivedAt) {
+      return toBookingView(context, current.document);
+    }
     if (current.document.status === target) {
       const booking = await toBookingView(context, current.document);
       if (target === "CONFIRMED") {
@@ -657,10 +686,14 @@ export async function setBookingStatus(
 ): Promise<BookingView> {
   const context = await contextForRequest(request);
   const current = await readOwnedBooking(context, id);
+  if (current.document.archivedAt) {
+    throw bookingError(409, "Archived Bookings cannot change status.");
+  }
   if (current.document.status === status) {
     if (NON_EDITABLE_STATUSES.includes(status)) {
       await cancelBookingReminders(context.tenantId, id);
     }
+
     const booking = await toBookingView(context, current.document);
     if (status === "CONFIRMED") {
       await ensureBookingConfirmation(context, booking);
@@ -690,6 +723,61 @@ export async function setBookingStatus(
       await ensureBookingConfirmation(context, booking);
     }
     return booking;
+  } catch (error) {
+    if (isPreconditionFailed(error)) {
+      throw bookingError(409, "The Booking changed. Refresh and retry.");
+    }
+    throw error;
+  }
+}
+
+export async function setBookingArchived(
+  request: Request,
+  id: string,
+  input: BookingArchiveInput,
+): Promise<BookingView> {
+  const viewer = await getRequestViewer(request);
+  const context = requireTenantContext(viewer);
+  requireCompanyAdmin(context);
+  const current = await readOwnedBooking(context, id);
+  if (Boolean(current.document.archivedAt) === input.archived) {
+    return toBookingView(context, current.document);
+  }
+
+  const now = new Date().toISOString();
+  const next: BookingDocument = input.archived
+    ? {
+        ...current.document,
+        status: NON_EDITABLE_STATUSES.includes(current.document.status)
+          ? current.document.status
+          : "CANCELLED",
+        archivedAt: now,
+        archivedByUserId: viewer!.user.id,
+        archivedByUsername: context.username,
+        archivedFromStatus: current.document.status,
+        updatedAt: now,
+      }
+    : {
+        ...current.document,
+        status: current.document.archivedFromStatus ?? current.document.status,
+        archivedAt: undefined,
+        archivedByUserId: undefined,
+        archivedByUsername: undefined,
+        archivedFromStatus: undefined,
+        updatedAt: now,
+      };
+
+  try {
+    const updated = await replaceBookingDocument(next, current.etag);
+    if (
+      input.archived ||
+      NON_EDITABLE_STATUSES.includes(updated.document.status)
+    ) {
+      await cancelBookingReminders(context.tenantId, id);
+    } else {
+      await rescheduleBookingReminders(updated.document);
+    }
+    return toBookingView(context, updated.document);
   } catch (error) {
     if (isPreconditionFailed(error)) {
       throw bookingError(409, "The Booking changed. Refresh and retry.");

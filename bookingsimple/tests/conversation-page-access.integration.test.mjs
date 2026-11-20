@@ -17,6 +17,7 @@ import {
   conversationContainer,
 } from "../src/server/conversation-storage.ts";
 import { customerContainer } from "../src/server/customer-storage.ts";
+import { getOperationalDashboard } from "../src/server/dashboard-service.ts";
 import {
   addConversationMessageForContext,
   processIncomingProviderMessage,
@@ -29,7 +30,7 @@ function restoreEnvironment(name, value) {
   else process.env[name] = value;
 }
 
-function syntheticUser(email, tenantId) {
+function syntheticUser(email, tenantId, role = "company_user") {
   const now = new Date().toISOString();
   return {
     id: "user",
@@ -50,7 +51,7 @@ function syntheticUser(email, tenantId) {
     membership: {
       tenantId,
       username: `company-user-${randomUUID().slice(0, 8)}`,
-      role: "company_user",
+      role,
     },
   };
 }
@@ -70,7 +71,12 @@ test(
       `conversation-user-b-${suffix}@example.invalid`,
       tenantB,
     );
-    const users = [userA, userB];
+    const adminA = syntheticUser(
+      `conversation-admin-a-${suffix}@example.invalid`,
+      tenantA,
+      "company_admin",
+    );
+    const users = [userA, userB, adminA];
     const sessions = [];
     const customerIds = new Map([
       [tenantA, new Set()],
@@ -146,7 +152,7 @@ test(
         await createDocument(controlContainer(), user);
         sessions.push(await createSession(user, false));
       }
-      const [sessionA, sessionB] = sessions;
+      const [sessionA, sessionB, adminSessionA] = sessions;
 
       const unauthenticated = await request("/inbox");
       assert.equal(unauthenticated.status, 307);
@@ -533,8 +539,119 @@ test(
         body: "This arrived through Postmark.",
         receivedAt: new Date().toISOString(),
       };
+      const archivePath =
+        `/api/conversations/${exactConversation.conversation.id}/archive`;
+      assert.equal(
+        (
+          await request(archivePath, sessionA.token, {
+            method: "POST",
+            body: JSON.stringify({ archived: true }),
+          })
+        ).status,
+        403,
+      );
+      const archivedResponse = await request(
+        archivePath,
+        adminSessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ archived: true }),
+        },
+      );
+      assert.equal(archivedResponse.status, 200);
+      const archivedConversation = (await archivedResponse.json()).conversation;
+      assert.equal(archivedConversation.messageCount, 5);
+      assert.equal(
+        archivedConversation.archivedByUsername,
+        adminA.membership.username,
+      );
+      const activeAfterArchive = await request(
+        "/api/conversations",
+        adminSessionA.token,
+      );
+      assert.equal(activeAfterArchive.status, 200);
+      assert.equal(
+        (await activeAfterArchive.json()).conversations.some(
+          (conversation) =>
+            conversation.id === exactConversation.conversation.id,
+        ),
+        false,
+      );
+      for (const conversationId of conversationIds.get(tenantA)) {
+        if (conversationId === exactConversation.conversation.id) continue;
+        assert.equal(
+          (
+            await request(
+              `/api/conversations/${conversationId}/archive`,
+              adminSessionA.token,
+              {
+                method: "POST",
+                body: JSON.stringify({ archived: true }),
+              },
+            )
+          ).status,
+          200,
+        );
+      }
+      const dashboardAfterArchive = await getOperationalDashboard({
+        tenantId: tenantA,
+        businessName: "Conversation test company A",
+        username: adminA.membership.username,
+        role: "company_admin",
+      });
+      assert.equal(
+        dashboardAfterArchive.attentionConversations.length,
+        0,
+      );
+      assert.equal(dashboardAfterArchive.attentionCount, 0);
+      const archivedList = await request(
+        "/api/conversations?archive=archived",
+        adminSessionA.token,
+      );
+      assert.equal(archivedList.status, 200);
+      assert.equal(
+        (await archivedList.json()).conversations.some(
+          (conversation) =>
+            conversation.id === exactConversation.conversation.id,
+        ),
+        true,
+      );
+      assert.equal(
+        (
+          await request(
+            "/api/conversations?archive=archived",
+            sessionA.token,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await request(
+            `/api/conversations/${exactConversation.conversation.id}`,
+            sessionA.token,
+          )
+        ).status,
+        404,
+      );
+      const archivedDetails = await request(
+        `/api/conversations/${exactConversation.conversation.id}`,
+        adminSessionA.token,
+      );
+      assert.equal(archivedDetails.status, 200);
+      assert.equal((await archivedDetails.json()).messages.length, 5);
+
       const processed = await processIncomingProviderMessage(incoming);
       assert.equal(processed.status, "PROCESSED");
+      const restoredByInbound = await request(
+        `/api/conversations/${exactConversation.conversation.id}`,
+        sessionA.token,
+      );
+      assert.equal(restoredByInbound.status, 200);
+      assert.equal(
+        (await restoredByInbound.json()).conversation.archivedAt,
+        undefined,
+      );
       const duplicate = await processIncomingProviderMessage(incoming);
       assert.equal(duplicate.status, "DUPLICATE");
       const wrongTenantSender = await processIncomingProviderMessage({
@@ -568,6 +685,29 @@ test(
           .read()
       ).resource;
       assert.equal(afterInbound.messageCount, 6);
+
+      assert.equal(
+        (
+          await request(archivePath, adminSessionA.token, {
+            method: "POST",
+            body: JSON.stringify({ archived: true }),
+          })
+        ).status,
+        200,
+      );
+      const restoredResponse = await request(
+        archivePath,
+        adminSessionA.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ archived: false }),
+        },
+      );
+      assert.equal(restoredResponse.status, 200);
+      assert.equal(
+        (await restoredResponse.json()).conversation.archivedAt,
+        undefined,
+      );
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnvironment(

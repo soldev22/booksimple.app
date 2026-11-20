@@ -38,7 +38,12 @@ export default async function ConversationDetailPage({
       viewer={viewer}
       wide
     >
-      <ConversationDetailPanel initialDetails={details} />
+      <ConversationDetailPanel
+        canManageArchivedConversation={
+          viewer.tenant.role === "company_admin"
+        }
+        initialDetails={details}
+      />
     </AccountShell>
   );
 }

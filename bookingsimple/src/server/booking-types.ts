@@ -40,6 +40,10 @@ export type BookingDocument = ItemDefinition & {
   depositOverriddenByUserId?: string;
   depositOverriddenByUsername?: string;
   depositOverriddenAt?: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  archivedByUsername?: string;
+  archivedFromStatus?: BookingStatus;
   createdAt: string;
   updatedAt: string;
 };
@@ -69,6 +73,10 @@ export type BookingView = {
   depositOverridden: boolean;
   depositOverriddenByUsername?: string;
   depositOverriddenAt?: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  archivedByUsername?: string;
+  archivedFromStatus?: BookingStatus;
   createdAt: string;
   updatedAt: string;
 };

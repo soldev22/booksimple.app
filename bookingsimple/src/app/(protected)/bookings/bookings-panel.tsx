@@ -45,12 +45,12 @@ function displayDate(isoDate: string, timeZone: string): string {
 }
 
 export function BookingsPanel({
-  canManageServices,
+  canManageArchivedBookings,
   canManageStaff,
   initialCustomerId,
   initialConversationId,
 }: {
-  canManageServices: boolean;
+  canManageArchivedBookings: boolean;
   canManageStaff: boolean;
   initialCustomerId?: string;
   initialConversationId?: string;
@@ -66,6 +66,7 @@ export function BookingsPanel({
     return nextHour.toISOString();
   });
   const [status, setStatus] = useState<BookingStatus | "all">("all");
+  const [archive, setArchive] = useState<"active" | "archived">("active");
   const [customerFilter, setCustomerFilter] = useState(
     initialCustomerId ?? "",
   );
@@ -74,6 +75,7 @@ export function BookingsPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const hasConversationContext = Boolean(
     initialConversationId && initialCustomerId,
   );
@@ -124,6 +126,7 @@ export function BookingsPanel({
     let active = true;
     const query = new URLSearchParams({
       status,
+      archive,
       pageSize: "50",
       ...(customerFilter ? { customerId: customerFilter } : {}),
     });
@@ -150,13 +153,14 @@ export function BookingsPanel({
     return () => {
       active = false;
     };
-  }, [status, customerFilter]);
+  }, [archive, status, customerFilter]);
 
   async function createBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
+    setMessage("");
     try {
       const values = Object.fromEntries(new FormData(event.currentTarget));
       const booking = parseBookingResponse(
@@ -190,6 +194,7 @@ export function BookingsPanel({
     try {
       const query = new URLSearchParams({
         status,
+        archive,
         pageSize: "50",
         continuationToken,
         ...(customerFilter ? { customerId: customerFilter } : {}),
@@ -208,6 +213,40 @@ export function BookingsPanel({
     } finally {
       setLoading(false);
     }
+
+  }
+
+  async function setBookingArchived(
+    booking: BookingView,
+    archived: boolean,
+  ) {
+    if (busy) return;
+    const confirmed = window.confirm(
+      archived
+        ? `Delete the Booking for ${booking.customerName}? It will be removed from operational views but its history will be retained.`
+        : `Restore the Booking for ${booking.customerName}?`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await bookingApi(`/api/bookings/${booking.id}/archive`, "POST", {
+        archived,
+      });
+      setBookings((current) =>
+        current.filter((currentBooking) => currentBooking.id !== booking.id),
+      );
+      setMessage(archived ? "Booking deleted." : "Booking restored.");
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The Booking archive state could not be changed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   let suggestedStart = "";
@@ -218,6 +257,7 @@ export function BookingsPanel({
   return (
     <>
       {error && <p className="account-error" role="alert">{error}</p>}
+      {message && <p className="account-notice" role="status">{message}</p>}
 
       <section className="account-section">
         <h2>Create Booking</h2>
@@ -233,18 +273,7 @@ export function BookingsPanel({
         {customers.length === 0 || services.length === 0 ? (
           <p>
             At least one active Customer and one active Service are required.
-            {" "}
-            <Link className="customer-action-link" href="/customers">
-              Manage Customers
-            </Link>
-            {canManageServices && (
-              <>
-                {" "}
-                <Link className="customer-action-link" href="/services">
-                  Manage Services
-                </Link>
-              </>
-            )}
+            Use the permanent workspace navigation to manage them.
           </p>
         ) : (
           <form
@@ -275,6 +304,22 @@ export function BookingsPanel({
                 />
               )}
             </label>
+            {canManageArchivedBookings && (
+              <label className="account-field">
+                <span>Visibility</span>
+                <select
+                  onChange={(event) => {
+                    setLoading(true);
+                    setError("");
+                    setArchive(event.target.value as "active" | "archived");
+                  }}
+                  value={archive}
+                >
+                  <option value="active">Current Bookings</option>
+                  <option value="archived">Deleted Bookings</option>
+                </select>
+              </label>
+            )}
             {canManageStaff && (
               <label className="account-field">
                 <span>Staff member</span>
@@ -397,12 +442,29 @@ export function BookingsPanel({
                       </span>
                     </td>
                     <td>
-                      <Link
-                        className="customer-action-link"
-                        href={`/bookings/${booking.id}`}
-                      >
-                        View Booking
-                      </Link>
+                      <div className="booking-table-actions">
+                        <Link
+                          className="customer-action-link"
+                          href={`/bookings/${booking.id}`}
+                        >
+                          View Booking
+                        </Link>
+                        {canManageArchivedBookings && (
+                          <button
+                            className={`account-button${archive === "archived" ? " account-button-secondary" : " account-button-danger"}`}
+                            disabled={busy}
+                            onClick={() =>
+                              void setBookingArchived(
+                                booking,
+                                archive !== "archived",
+                              )
+                            }
+                            type="button"
+                          >
+                            {archive === "archived" ? "Restore" : "Delete"}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

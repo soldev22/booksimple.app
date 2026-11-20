@@ -37,6 +37,9 @@ export type ConversationDocument = ItemDefinition & {
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  archivedByUsername?: string;
 };
 
 export type MessageDocument = ItemDefinition & {
@@ -85,6 +88,9 @@ export type ConversationView = {
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  archivedByUsername?: string;
 };
 
 export type MessageView = {
