@@ -1485,6 +1485,22 @@ Never put real credentials in .env.example.
 
 Ensure secret-bearing environment files are excluded from Git.
 
+## Web Response Hardening
+
+Stage 20 applies response security headers to every application route through
+the reviewed Next.js `headers` configuration. The policy denies framing and
+objects, restricts scripts, styles, images, connections, forms and base URLs to
+the application requirements, upgrades insecure requests, prevents MIME
+sniffing, restricts browser capabilities and referrer data, isolates the
+top-level browsing context and enables long-lived HTTPS transport security.
+Development alone permits `unsafe-eval` for the Next.js toolchain; production
+does not.
+
+Unexpected failures below the protected route group render a safe retryable
+fallback. Server error details remain hidden by Next.js; the client logs only
+the structured event name and opaque digest, never the original message or
+tenant data.
+
 ---
 
 # 31. Logging

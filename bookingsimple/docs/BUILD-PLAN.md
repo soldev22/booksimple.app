@@ -1692,6 +1692,8 @@ STOP after completion.
 
 # STAGE 20 — Production Readiness
 
+Status: COMPLETE — CODE READINESS PASSED; DEPLOYMENT-TIME OPERATIONAL SIGN-OFF REMAINS
+
 ## Objective
 
 Prepare the proven application for controlled production use.
@@ -1719,6 +1721,36 @@ Review:
 Run production build and tests.
 
 Resolve critical security issues before deployment.
+
+Completed review and remediation:
+
+- authentication, authorization and tenant isolation retain their server-side
+  guards and focused test coverage; auth and privileged administration use the
+  persisted Cosmos rate limiter,
+- provider webhooks remain signature- or credential-authenticated and the
+  Reminder worker remains protected by `CRON_SECRET`,
+- application responses now include a reviewed Content Security Policy, HSTS,
+  frame denial, MIME-sniffing prevention, a restrictive Permissions Policy,
+  referrer control and cross-origin opener isolation,
+- unexpected protected-route render failures now receive a safe retryable UI
+  that logs only a structured event and opaque digest,
+- the full dependency tree was scanned; npm remediated the transitive
+  `minimatch` denial-of-service advisory under the development lint toolchain,
+  and the final direct-dependency and full-lockfile scans report zero known
+  vulnerabilities,
+- the production server started successfully and runtime tests proved the
+  public sign-in page, unauthenticated workspace redirect, response headers,
+  cross-origin mutation rejection and unsupported-content rejection,
+- the canonical suite, TypeScript check, lint and production build pass, and
+- a 390-pixel browser viewport renders the sign-in flow without horizontal
+  overflow and retains its accessible heading and form labels.
+
+The code-readiness review does not deploy or authorize real production data.
+Before Stage 21 accepts traffic, operational owners must verify Azure/Vercel
+workload identity and environment separation, external monitoring and alerts,
+a backup restore drill, production secret rotation ownership and authenticated
+browser journeys against isolated production-like test data. These are
+deployment sign-offs, not silently assumed application guarantees.
 
 STOP before deploying production unless deployment is explicitly requested.
 
