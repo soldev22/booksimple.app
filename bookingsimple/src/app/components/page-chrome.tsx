@@ -38,8 +38,15 @@ export function HeaderUserActions({ viewer }: { viewer: Viewer }) {
 export function PageFooter() {
   return (
     <footer className="shared-page-footer">
-      <span>BookSimple</span>
-      <span>Built for the way your business works.</span>
+      <div className="shared-page-footer-copy">
+        <span>BookSimple</span>
+        <span>Built for the way your business works.</span>
+      </div>
+      <nav aria-label="Legal">
+        <Link className="dashboard-action-link" href="/privacy">Privacy</Link>
+        <Link className="dashboard-action-link" href="/terms">Terms</Link>
+        <Link className="dashboard-action-link" href="/data-deletion">Data deletion</Link>
+      </nav>
     </footer>
   );
 }

@@ -13,7 +13,16 @@ test("application pages require a valid session while sign-in and recovery remai
       headers: token ? { cookie: `booksimple_session=${token}` } : {},
     });
     try {
-      for (const path of ["/login", "/register", "/verify", "/forgot-password", "/reset-password"]) {
+      for (const path of [
+        "/login",
+        "/register",
+        "/verify",
+        "/forgot-password",
+        "/reset-password",
+        "/privacy",
+        "/terms",
+        "/data-deletion",
+      ]) {
         assert.equal((await get(path)).status, 200, `${path} should be public`);
       }
       for (const path of ["/", "/account", "/admin", "/admin/users"]) {

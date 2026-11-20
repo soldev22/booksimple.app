@@ -603,6 +603,12 @@ treatment. Structural navigation such as the product logo, workspace sidebar,
 signed-in identity link and accessibility skip link retains its purpose-specific
 styling.
 
+Public Privacy Policy, Terms of Service and data-deletion instructions are
+available at `/privacy`, `/terms` and `/data-deletion`. They use static Server
+Component pages with route-specific metadata, appear in the shared footer and
+remain outside the authenticated workspace boundary so customers, external
+providers and compliance reviewers can access them without an account.
+
 All authenticated routes render inside one persistent workspace layout. The
 fixed desktop sidebar contains role-aware workspace and management destinations;
 Next.js route navigation replaces only the main content area. The current route
